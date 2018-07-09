@@ -1,0 +1,6 @@
+{
+    "terminal.integrated.env.osx": {
+        "PATH": "/Users/cdaller/.platformio/penv/bin:/Users/cdaller/.platformio/penv:/Users/cdaller/.rvm/gems/ruby-2.3.0/bin:/Users/cdaller/.rvm/gems/ruby-2.3.0@global/bin:/Users/cdaller/.rvm/rubies/ruby-2.3.0/bin:/Users/cdaller/bin:/Users/cdaller/bin/scripts:/usr/local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/X11/bin:/usr/local/bin:/Users/cdaller/.config/yarn/global/node_modules/.bin:/Users/cdaller/.oh-my-zsh/custom/plugins/warhol/bin:/Users/cdaller/.rvm/bin",
+        "PLATFORMIO_CALLER": "vscode"
+    }
+}
