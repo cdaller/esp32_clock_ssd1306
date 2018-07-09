@@ -12,6 +12,16 @@
 
 #include <Preferences.h>
 
+// reading internal temperatur sensor:
+#ifdef __cplusplus
+extern "C" {
+#endif
+uint8_t temprature_sens_read();
+#ifdef __cplusplus
+}
+#endif
+uint8_t temprature_sens_read();
+
 #include "font.h"
 #include "config.h"
 
@@ -41,7 +51,27 @@ void display_text(String text){
   // works: display.setFont(ArialMT_Plain_24);
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.drawString(64, 15, text);
-  display.display();
+}
+
+float readInternalTemperature() {
+  uint8_t temperatureInF = temprature_sens_read();
+  uint8_t temperatureInC = (temperatureInF - 32) / 1.8;
+  //temperatureInC += 17; // correction to real temperature
+  // Serial.print(temperatureInF);
+  // Serial.println("°F");
+  // Serial.print(temperatureInC);
+  // Serial.println("°C");
+  return temperatureInC;
+}
+
+void display_temperature() {
+  uint8_t temperatureInC = readInternalTemperature();
+
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_10);
+  char tempString[8];
+  sprintf(tempString, "%2d°C", temperatureInC);
+  display.drawString(0, 4, tempString);
 }
 
 void setup(){
@@ -167,9 +197,11 @@ void loop() {
   //display second bar
   display.fillRect(1, 0, display.width() * timeClient.getSeconds() / 59, 2);
 
+  display_temperature();
   //display time
-  sprintf(buffer, "%02d:%02d", timeClient.getHours(), timeClient.getMinutes());
+  sprintf(buffer, "%2d:%02d", timeClient.getHours(), timeClient.getMinutes());
   display_text(buffer);
+  display.display();
 
   delay(300);
 }
