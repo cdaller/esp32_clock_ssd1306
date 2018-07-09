@@ -68,11 +68,20 @@ void setup(){
     delay ( 500 );
   }
 
+  char ssid[15];
+  uint64_t chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
+  uint16_t chip = (uint16_t)(chipid>>32);
+  snprintf(ssid,15,"CDEsp32-%04X",chip);
+  
+  Serial.print("ESP client ID: ");
+  Serial.println(ssid);
+
+
   // OTA setup:
   /* create a connection at port 3232 */
   ArduinoOTA.setPort(3232);
   /* we use mDNS instead of IP of ESP32 directly */
-  ArduinoOTA.setHostname("esp32");
+  ArduinoOTA.setHostname(ssid);
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
@@ -114,9 +123,7 @@ void setup(){
   /* start updating */
   ArduinoOTA.begin();
   Serial.print("ESP IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  
+  Serial.println(WiFi.localIP());  
 
   display.clear();
   display_text("NTP");
@@ -132,7 +139,7 @@ char buffer[5];
 
 void loop() {
   ArduinoOTA.handle();
-  
+
   timeClient.update();
 
   // change time zone (offset):
