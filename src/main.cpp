@@ -56,7 +56,7 @@ void display_text(String text){
 float readInternalTemperature() {
   uint8_t temperatureInF = temprature_sens_read();
   uint8_t temperatureInC = (temperatureInF - 32) / 1.8;
-  //temperatureInC += 17; // correction to real temperature
+  temperatureInC -= 12; // correction to real temperature
   // Serial.print(temperatureInF);
   // Serial.println("°F");
   // Serial.print(temperatureInC);
