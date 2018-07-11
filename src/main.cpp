@@ -10,6 +10,8 @@
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 
+#include <PubSubClient.h>
+
 #include <Preferences.h>
 
 // reading internal temperatur sensor:
@@ -35,6 +37,15 @@ WiFiUDP ntpUDP;
 #define TOUCH_PIN T3 //connected to 15
 int touch_value = 100;
 
+const char* mqttServer = "192.168.8.99";
+const int mqttPort = 1883;
+const char* mqttUser = "";
+const char* mqttPassword = "";
+const char* mqttSubscribeTopic = "/home/ESP_Easy_Mobile/Temperature";
+char* mqttSubscribeValue = NULL;
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
 Preferences preferences;
 
@@ -45,7 +56,7 @@ int offset = 2;
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", offset * 3600, 60* 60 * 1000);
 
-void display_text(String text){
+void displayText(String text){
   display.setColor(WHITE);
   display.setFont(Dialog_plain_40);
   // works: display.setFont(ArialMT_Plain_24);
@@ -64,7 +75,7 @@ float readInternalTemperature() {
   return temperatureInC;
 }
 
-void display_temperature() {
+void displayTemperature() {
   uint8_t temperatureInC = readInternalTemperature();
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -74,7 +85,49 @@ void display_temperature() {
   display.drawString(0, 4, tempString);
 }
 
-void setup(){
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+ 
+  Serial.print("Message arrived in topic: ");
+  Serial.println(topic);
+ 
+  Serial.print("Message value: ");
+  payload[length] = '\0';
+  mqttSubscribeValue = (char*) payload;
+ 
+  Serial.println(mqttSubscribeValue);
+}
+
+void displayMqttValue() {
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.setFont(ArialMT_Plain_10);
+  char tempString[10];
+  if (mqttSubscribeValue != NULL) {
+    sprintf(tempString, "%s°C", mqttSubscribeValue);
+  } else {
+    sprintf(tempString, "%s°C", "??");
+  }
+  display.drawString(display.width(), 4, tempString);
+}
+
+void mqttConnect() {
+  // Loop until we're reconnected
+  if (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (mqttClient.connect("ESP32Client", mqttUser, mqttPassword)) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      //mqttClient.publish("outTopic","hello world");
+      // ... and resubscribe
+      mqttClient.subscribe(mqttSubscribeTopic);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqttClient.state());
+    }
+  }
+}
+
+void setup() {
   Serial.begin(115200);
 
   // preferences.begin("NTP", true);
@@ -94,7 +147,7 @@ void setup(){
   WiFi.begin(ssid, password);
 
   while ( WiFi.status() != WL_CONNECTED ) {
-    display_text("CONN");
+    displayText("CONN");
     delay ( 500 );
   }
 
@@ -156,20 +209,42 @@ void setup(){
   Serial.println(WiFi.localIP());  
 
   display.clear();
-  display_text("NTP");
-
+  displayText("NTP");
+  
+  // NTP
   timeClient.begin();
 
   while (!timeClient.forceUpdate()){
     delay(10);
   }
+
+  // MQTT Server
+  display.clear();
+  displayText("MQTT");
+  mqttClient.setServer(mqttServer, mqttPort);
+  mqttClient.setCallback(mqttCallback);
+
+  mqttConnect();
+  Serial.println("setup end");
 }
+
+
 
 char buffer[5];
 
 void loop() {
-  ArduinoOTA.handle();
+  //Serial.println("loop start");
 
+  ArduinoOTA.handle();
+  //Serial.println("After OTA handle");
+  if (!mqttClient.connected()) {
+    Serial.println("Try to connect to mqtt broker");
+    mqttConnect();
+  }
+
+  //Serial.println("MQTT loop");
+  mqttClient.loop();
+  //Serial.println("NTP update");
   timeClient.update();
 
   // change time zone (offset):
@@ -192,15 +267,23 @@ void loop() {
     preferences.end();
   }
 
+  //Serial.println("display start");
   display.clear();
 
   //display second bar
   display.fillRect(1, 0, display.width() * timeClient.getSeconds() / 59, 2);
 
-  display_temperature();
+  displayTemperature();
+  displayMqttValue();
+
   //display time
   sprintf(buffer, "%2d:%02d", timeClient.getHours(), timeClient.getMinutes());
-  display_text(buffer);
+  displayText(buffer);
+
+  // display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  // display.setFont(ArialMT_Plain_10);
+  // display.drawString(display.width(), 4, "12345678890");
+
   display.display();
 
   delay(300);
