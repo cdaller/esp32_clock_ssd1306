@@ -35,14 +35,11 @@ WiFiUDP ntpUDP;
 
 //#define TOUCH_PIN T1 //connected to 0
 #define TOUCH_PIN T3 //connected to 15
-int touch_value = 100;
+int touch_value = 100; // default value
 
-const char* mqttServer = "192.168.8.99";
-const int mqttPort = 1883;
-const char* mqttUser = "";
-const char* mqttPassword = "";
-const char* mqttSubscribeTopic = "/home/ESP_Easy_Mobile/Temperature";
 char* mqttSubscribeValue = NULL;
+
+// allow to overwrite the configuration from external file:
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
@@ -67,11 +64,11 @@ void displayText(String text){
 float readInternalTemperature() {
   uint8_t temperatureInF = temprature_sens_read();
   uint8_t temperatureInC = (temperatureInF - 32) / 1.8;
+  // internal termperature sensor is off, so 'calibrate' it
+  // not very precise, but better than nothing :-)
+  // see https://community.blynk.cc/t/esp32-internal-sensors/23041/44
+  // for different systems, this correction probably needs to be changed!
   temperatureInC -= 12; // correction to real temperature
-  // Serial.print(temperatureInF);
-  // Serial.println("°F");
-  // Serial.print(temperatureInC);
-  // Serial.println("°C");
   return temperatureInC;
 }
 
@@ -92,6 +89,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
  
   Serial.print("Message value: ");
   payload[length] = '\0';
+  // String stringValue = String((char*)payload);
+  // float floatValue = stringValue.toFloat();
   mqttSubscribeValue = (char*) payload;
  
   Serial.println(mqttSubscribeValue);
@@ -151,13 +150,14 @@ void setup() {
     delay ( 500 );
   }
 
-  char ssid[15];
+  char deviceName[15];
   uint64_t chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
   uint16_t chip = (uint16_t)(chipid>>32);
-  snprintf(ssid,15,"CDEsp32-%04X",chip);
+  snprintf(deviceName,15,"CDEsp32-%04X",chip);
   
-  Serial.print("ESP client ID: ");
-  Serial.println(ssid);
+  // print device name to be used for OTA (platform.ini):
+  Serial.print("ESP device name: ");
+  Serial.println(deviceName);
 
 
   // OTA setup:
@@ -248,11 +248,14 @@ void loop() {
   timeClient.update();
 
   // change time zone (offset):
+  // reading touch value disabled, does not work reliable on single wire
+  // needs some real switch or bigger metal plate to push on
+  // see https://nick.zoic.org/art/esp32-capacitive-sensors/
   // touch_value = touchRead(TOUCH_PIN);
-  // Serial.print("Touch Value: ");
-  // Serial.println(touch_value);
-
   if (touch_value < 20 ){
+    Serial.print("Touch Value: ");
+    Serial.println(touch_value);
+
     offset += 1;
     if (offset > 14) {
       offset = -11;
