@@ -1,6 +1,17 @@
- #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
+//Define DEBUG to get the Output from DEBUG_PRINTLN
+#define DEBUG 1
+
+#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
 
 #include <NTPClient.h>
+
+#include <Basecamp.hpp>
+
+// Create a new Basecamp instance called iot that will start the ap in secure mode and the webserver ui only in setup mode
+// Basecamp iot{Basecamp::SetupModeWifiEncryption::secured, Basecamp::ConfigurationUI::accessPoint};
+// Uncomment the following line and comment to one above to start the ESP with open wifi and always running config ui
+Basecamp iot;
+
 // change next line to use with another board/shield
 //#include <ESP8266WiFi.h>
 #include <WiFi.h> // for WiFi shield
@@ -8,9 +19,6 @@
 #include <WiFiUdp.h>
 
 #include <ESPmDNS.h>
-#include <ArduinoOTA.h>
-
-#include <PubSubClient.h>
 
 #include <Preferences.h>
 
@@ -38,11 +46,6 @@ WiFiUDP ntpUDP;
 int touch_value = 100; // default value
 
 char* mqttSubscribeValue = NULL;
-
-// allow to overwrite the configuration from external file:
-
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
 
 Preferences preferences;
 
@@ -82,17 +85,23 @@ void displayTemperature() {
   display.drawString(0, 4, tempString);
 }
 
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
- 
+//This topic is called if an MQTT message is received
+void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
+  DEBUG_PRINTLN(__func__);
+
   Serial.print("Message arrived in topic: ");
   Serial.println(topic);
+  Serial.print("payload: ");
+  Serial.println(payload);
+  Serial.print("len: ");
+  Serial.println(len);
  
-  Serial.print("Message value: ");
-  payload[length] = '\0';
+  payload[len] = '\0';
   // String stringValue = String((char*)payload);
   // float floatValue = stringValue.toFloat();
   mqttSubscribeValue = (char*) payload;
  
+  Serial.print("Message value: ");
   Serial.println(mqttSubscribeValue);
 }
 
@@ -108,21 +117,14 @@ void displayMqttValue() {
   display.drawString(display.width(), 4, tempString);
 }
 
-void mqttConnect() {
-  // Loop until we're reconnected
-  if (!mqttClient.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    // Attempt to connect
-    if (mqttClient.connect("ESP32Client", mqttUser, mqttPassword)) {
-      Serial.println("connected");
-      // Once connected, publish an announcement...
-      //mqttClient.publish("outTopic","hello world");
-      // ... and resubscribe
-      mqttClient.subscribe(mqttSubscribeTopic);
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(mqttClient.state());
-    }
+//This function is called when the MQTT-Server is connected
+void onMqttConnect(bool sessionPresent) {
+  DEBUG_PRINTLN(__func__);
+
+  if (sessionPresent) {
+    iot.mqtt.subscribe(mqttSubscribeTopic, 0);
+  } else {
+    DEBUG_PRINTLN("no mqtt session yet...");
   }
 }
 
@@ -143,70 +145,20 @@ void setup() {
   display.init();
   //display.flipScreenVertically();
 
-  WiFi.begin(ssid, password);
 
-  while ( WiFi.status() != WL_CONNECTED ) {
-    displayText("CONN");
-    delay ( 500 );
-  }
+  // Initialize Basecamp
+  iot.begin();
+  // Alternate example: optional initialization with a fixed ap password for setup-mode:
+  // iot.begin("yoursecurepassword");
 
-  char deviceName[15];
-  uint64_t chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
-  uint16_t chip = (uint16_t)(chipid>>32);
-  snprintf(deviceName,15,"CDEsp32-%04X",chip);
-  
-  // print device name to be used for OTA (platform.ini):
-  Serial.print("ESP device name: ");
-  Serial.println(deviceName);
+  //Set up the Callbacks for the MQTT instance. Refer to the Async MQTT Client documentation
+  // TODO: We should do this actually _before_ connecting the mqtt client...
+  iot.mqtt.onConnect(onMqttConnect);
+  //iot.mqttOnPublish(suspendESP);
+  iot.mqtt.onMessage(onMqttMessage);
 
-
-  // OTA setup:
-  /* create a connection at port 3232 */
-  ArduinoOTA.setPort(3232);
-  /* we use mDNS instead of IP of ESP32 directly */
-  ArduinoOTA.setHostname(ssid);
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
- 
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-  
-  /* this callback function will be invoked when updating start */
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH)
-      type = "sketch";
-    else // U_SPIFFS
-      type = "filesystem";
- 
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating " + type);
-  });
-  /* this callback function will be invoked when updating end */
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd updating");
-  });
-  /* this callback function will be invoked when a number of chunks of software was flashed
-  so we can use it to calculate the progress of flashing */
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-
-  /* this callback function will be invoked when updating error */
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  /* start updating */
-  ArduinoOTA.begin();
-  Serial.print("ESP IP address: ");
-  Serial.println(WiFi.localIP());  
+  DEBUG_PRINT("Basecamp hostname: ");
+  DEBUG_PRINTLN(iot.hostname);
 
   display.clear();
   displayText("NTP");
@@ -218,13 +170,6 @@ void setup() {
     delay(10);
   }
 
-  // MQTT Server
-  display.clear();
-  displayText("MQTT");
-  mqttClient.setServer(mqttServer, mqttPort);
-  mqttClient.setCallback(mqttCallback);
-
-  mqttConnect();
   Serial.println("setup end");
 }
 
@@ -233,17 +178,6 @@ void setup() {
 char buffer[5];
 
 void loop() {
-  //Serial.println("loop start");
-
-  ArduinoOTA.handle();
-  //Serial.println("After OTA handle");
-  if (!mqttClient.connected()) {
-    Serial.println("Try to connect to mqtt broker");
-    mqttConnect();
-  }
-
-  //Serial.println("MQTT loop");
-  mqttClient.loop();
   //Serial.println("NTP update");
   timeClient.update();
 
