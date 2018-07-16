@@ -164,7 +164,7 @@ void setup() {
   /* create a connection at port 3232 */
   ArduinoOTA.setPort(3232);
   /* we use mDNS instead of IP of ESP32 directly */
-  ArduinoOTA.setHostname(ssid);
+  ArduinoOTA.setHostname(deviceName);
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
