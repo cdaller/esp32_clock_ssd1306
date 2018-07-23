@@ -145,8 +145,10 @@ void setup() {
 
   WiFi.begin(ssid, password);
 
+  display.clear();
   while ( WiFi.status() != WL_CONNECTED ) {
-    displayText("CONN");
+    displayText("WIFI?");
+    display.display();
     delay ( 500 );
   }
 
@@ -210,7 +212,8 @@ void setup() {
 
   display.clear();
   displayText("NTP");
-  
+  display.display();
+
   // NTP
   timeClient.begin();
 
@@ -221,6 +224,7 @@ void setup() {
   // MQTT Server
   display.clear();
   displayText("MQTT");
+  display.display();
   mqttClient.setServer(mqttServer, mqttPort);
   mqttClient.setCallback(mqttCallback);
 
