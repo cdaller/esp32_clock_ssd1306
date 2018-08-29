@@ -1,0 +1,12 @@
+{
+    "name": "IoTBase",
+    "keywords": "wifimanager, iot, mqtt",
+    "description": "Easy setup for IoT projects",
+    "authors":
+    {
+        "name": "Christof Dallermassl"
+    },
+    "version": "1.0",
+    "frameworks": "arduino",
+    "platforms": "espressif32"
+}

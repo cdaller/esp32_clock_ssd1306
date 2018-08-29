@@ -1,3 +1,8 @@
+// framework libraries:
+#include <debug.hpp>
+#include <IoTBase.hpp>
+
+// application specific libraries
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
 
 #include <NTPClient.h>
