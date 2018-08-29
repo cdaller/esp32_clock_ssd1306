@@ -1,4 +1,4 @@
- #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
+#include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
 
 #include <NTPClient.h>
 // change next line to use with another board/shield
