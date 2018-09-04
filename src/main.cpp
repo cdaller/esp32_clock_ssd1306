@@ -2,6 +2,8 @@
 #include <debug.hpp>
 #include <IoTBase.hpp>
 
+#include <stdlib.h>
+
 // application specific libraries
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
 
@@ -52,6 +54,9 @@ PubSubClient mqttClient(espClient);
 Preferences preferences;
 
 int offset = 2;
+
+IoTBase iot;
+
 
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
@@ -131,6 +136,23 @@ void mqttConnect() {
   }
 }
 
+// load configuration (file or GUI) into variables
+void loadConfigCallback(JsonObject& json) {
+    DEBUG_PRINTLN("loadConfigCallback called");
+    //strcpy(mqttServer, json["mqtt_server"]);
+    //mqttPort = json["mqtt_port"];
+    Serial.printf("mqtt_server = %s\n", mqttServer);
+    Serial.printf("mqtt_port = %i\n", mqttPort);
+}
+
+// save variables into configuration
+void saveConfigCallback(JsonObject& json) {
+    DEBUG_PRINTLN("saveConfigCallback called");
+    json["mqtt_server"] = mqttServer;
+    //json["mqtt_port"] = mqttPort;
+}
+
+
 void setup() {
   Serial.begin(115200);
 
@@ -148,7 +170,17 @@ void setup() {
   display.init();
   //display.flipScreenVertically();
 
-  WiFi.begin(ssid, password);
+  iot.setLoadConfigCallback(loadConfigCallback);
+  iot.setSaveConfigCallback(saveConfigCallback);
+
+  // if there was a configuration saved in SPIFFS, load it and call callback 
+  iot.readConfiguration();
+
+  iot.addParameter("mqtt_server", "mqtt server", mqttServer, 40);
+  iot.addParameter("mqtt_port", "mqtt port", String(mqttPort), 6);
+
+  iot.begin();
+  //if you get here you have connected to the WiFi
 
   display.clear();
   while ( WiFi.status() != WL_CONNECTED ) {
