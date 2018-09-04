@@ -3,7 +3,7 @@
  * for easier development of IoT hardware based on ESP32 or ESP8266 hardware
  */
 
-//#define DEBUG 1
+#define DEBUG 1
 
 #include "IoTBase.hpp"
 

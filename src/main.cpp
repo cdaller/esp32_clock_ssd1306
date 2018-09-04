@@ -1,8 +1,8 @@
+#define DEBUG 1
+
 // framework libraries:
 #include <debug.hpp>
 #include <IoTBase.hpp>
-
-#include <stdlib.h>
 
 // application specific libraries
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
@@ -40,6 +40,8 @@ uint8_t temprature_sens_read();
 SSD1306Wire  display(DISPLAY_I2C, DISPLAY_SDA, DISPLAY_SCL);
 WiFiUDP ntpUDP;
 
+// PIN to start configuration portal:
+#define TRIGGER_PIN 0
 //#define TOUCH_PIN T1 //connected to 0
 #define TOUCH_PIN T3 //connected to 15
 int touch_value = 100; // default value
@@ -53,9 +55,18 @@ PubSubClient mqttClient(espClient);
 
 Preferences preferences;
 
+// timezone offset
 int offset = 2;
 
 IoTBase iot;
+
+// configuration default values:
+char mqttServer[40] = "192.168.8.99"; // IP of MQTT Server - DNS might not work!
+int mqttPort = 1883;
+char mqttUser[40] = "";
+char mqttPassword[40] = "";
+char mqttSubscribeTopic[100] = "/home/ESP_Easy_Mobile/Temperature";
+char mqttSubscribeTopicUnit[5] = "°C";
 
 
 // You can specify the time server pool and the offset (in seconds, can be
@@ -88,7 +99,7 @@ void displayTemperature() {
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
   char tempString[8];
-  sprintf(tempString, "%2d°C", temperatureInC);
+  sprintf(tempString, "%2d%s", temperatureInC, mqttSubscribeTopicUnit);
   display.drawString(0, 4, tempString);
 }
 
@@ -111,9 +122,9 @@ void displayMqttValue() {
   display.setFont(ArialMT_Plain_10);
   char tempString[10];
   if (mqttSubscribeValue != NULL) {
-    sprintf(tempString, "%s°C", mqttSubscribeValue);
+    sprintf(tempString, "%s%s", mqttSubscribeValue, mqttSubscribeTopicUnit);
   } else {
-    sprintf(tempString, "%s°C", "??");
+    sprintf(tempString, "%s%s", "??", mqttSubscribeTopicUnit);
   }
   display.drawString(display.width(), 4, tempString);
 }
@@ -139,22 +150,34 @@ void mqttConnect() {
 // load configuration (file or GUI) into variables
 void loadConfigCallback(JsonObject& json) {
     DEBUG_PRINTLN("loadConfigCallback called");
-    //strcpy(mqttServer, json["mqtt_server"]);
-    //mqttPort = json["mqtt_port"];
+    strcpy(mqttServer, json["mqtt_server"]);
+    mqttPort = json["mqtt_port"];
+    strcpy(mqttUser,  json["mqtt_user"]);
+    strcpy(mqttPassword,  json["mqtt_password"]);
+    strcpy(mqttSubscribeTopic, json["mqtt_topic"]);
+    strcpy(mqttSubscribeTopicUnit, json["mqtt_topic_unit"]);
     Serial.printf("mqtt_server = %s\n", mqttServer);
     Serial.printf("mqtt_port = %i\n", mqttPort);
+    Serial.printf("mqtt_topic_unit= %s\n", mqttSubscribeTopicUnit);
 }
 
 // save variables into configuration
 void saveConfigCallback(JsonObject& json) {
     DEBUG_PRINTLN("saveConfigCallback called");
     json["mqtt_server"] = mqttServer;
-    //json["mqtt_port"] = mqttPort;
+    json["mqtt_port"] = mqttPort;
+    json["mqtt_user"] = mqttUser;
+    json["mqtt_password"] = mqttPassword;
+    json["mqtt_topic"] = mqttSubscribeTopic;
+    json["mqtt_topic_unit"] = mqttSubscribeTopicUnit;
 }
 
 
 void setup() {
   Serial.begin(115200);
+
+  //clean FS, for testing
+  //SPIFFS.format();
 
   // preferences.begin("NTP", true);
   // offset = preferences.getInt("offset", offset);
@@ -178,16 +201,21 @@ void setup() {
 
   iot.addParameter("mqtt_server", "mqtt server", mqttServer, 40);
   iot.addParameter("mqtt_port", "mqtt port", String(mqttPort), 6);
+  iot.addParameter("mqtt_user", "mqtt user", mqttUser, 40);
+  iot.addParameter("mqtt_password", "mqtt password", mqttPassword, 40);
+  iot.addParameter("mqtt_topic", "mqtt topic", mqttSubscribeTopic, 100);
+  iot.addParameter("mqtt_topic_unit", "mqtt topic unit", mqttSubscribeTopicUnit, 5);
 
   iot.begin();
   //if you get here you have connected to the WiFi
 
-  display.clear();
-  while ( WiFi.status() != WL_CONNECTED ) {
-    displayText("WIFI?");
-    display.display();
-    delay ( 500 );
-  }
+  // display.clear();
+  // while ( WiFi.status() != WL_CONNECTED ) {
+  //   DEBUG_PRINTF("wifi status %i\n", WiFi.status());
+  //   displayText("WIFI?");
+  //   display.display();
+  //   delay ( 500 );
+  // }
 
   char deviceName[15];
   uint64_t chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
@@ -278,6 +306,14 @@ void loop() {
 
   ArduinoOTA.handle();
   //Serial.println("After OTA handle");
+
+  // start configuration portal:
+  if (digitalRead(TRIGGER_PIN) == LOW ) {
+      Serial.println("Triggered pin low!");
+      iot.restartWithConfigurationPortal();
+  }
+
+
   if (!mqttClient.connected()) {
     Serial.println("Try to connect to mqtt broker");
     mqttConnect();
