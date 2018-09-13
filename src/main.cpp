@@ -21,6 +21,8 @@
 
 #include <Preferences.h>
 
+#include <HTTPClient.h>
+
 // reading internal temperatur sensor:
 #ifdef __cplusplus
 extern "C" {
@@ -32,7 +34,6 @@ uint8_t temprature_sens_read();
 uint8_t temprature_sens_read();
 
 #include "font.h"
-#include "config.h"
 
 #define DISPLAY_I2C 0x3c
 #define DISPLAY_SDA 5
@@ -73,6 +74,10 @@ char mqttSubscribeTopicUnit[5] = "°C";
 // changed later with setTimeOffset() ). Additionaly you can specify the
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", offset * 3600, 60* 60 * 1000);
+
+HTTPClient http;
+long httpLastRequest;
+long httpRquestFrequencyMs = 10000;
 
 void displayText(String text){
   display.setColor(WHITE);
@@ -294,10 +299,12 @@ void setup() {
   mqttClient.setCallback(mqttCallback);
 
   mqttConnect();
+
+  // allow reuse (if server supports it)
+  http.setReuse(true);
+
   Serial.println("setup end");
 }
-
-
 
 char buffer[5];
 
@@ -346,6 +353,37 @@ void loop() {
     preferences.putInt("offset", offset);
     preferences.end();
   }
+
+  if (millis() - httpLastRequest > httpRquestFrequencyMs) {
+    httpLastRequest = millis();
+    Serial.println("requesting data via http");
+    // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
+    http.begin("http://api.luftdaten.info/v1/sensor/12758/");
+    //http.begin("https://jsonplaceholder.typicode.com/todos/1");
+
+    int httpCode = http.GET();
+    if(httpCode > 0) {
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if(httpCode == HTTP_CODE_OK) {
+          String payload = http.getString();
+          Serial.println(payload);            
+
+          DynamicJsonBuffer jsonBuffer;
+          JsonArray& measurements = jsonBuffer.parseArray(payload);
+          if (measurements.success()) {
+            float value = measurements[1]["sensordatavalues"][0]["value"];
+            Serial.printf("success reading value: %f\n", value);
+          } else {
+            Serial.println("could not parse json for value");
+          }
+        }
+      } else {
+          Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+      }
+      http.end();
+    }
 
   //Serial.println("display start");
   display.clear();
