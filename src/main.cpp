@@ -190,6 +190,24 @@ void saveConfigCallback(JsonObject& json) {
     json["mqtt_topic_unit"] = mqttSubscribeTopicUnit;
 }
 
+void setBrightness(uint8_t brightness) {
+  uint8_t contrast = brightness;
+  if (brightness < 128) {
+    // Magic values to get a smooth/ step-free transition
+    contrast = brightness * 1.171;
+  } else {
+    contrast = brightness * 1.171 - 43;
+  }
+
+  uint8_t precharge = 241;
+  if (brightness == 0) {
+    precharge = 0;
+  }
+  uint8_t comdetect = brightness / 8;
+
+  display.setContrast(contrast, precharge, comdetect);
+}
+
 
 void setup() {
   Serial.begin(115200);
@@ -414,6 +432,8 @@ void loop() {
   // display.setTextAlignment(TEXT_ALIGN_RIGHT);
   // display.setFont(ArialMT_Plain_10);
   // display.drawString(display.width(), 4, "12345678890");
+
+  setBrightness(128);
 
   display.display();
 
