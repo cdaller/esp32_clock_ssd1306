@@ -22,6 +22,8 @@
 #define PREF_WIFI_CONFIGURED "WifiConfigured"
 #define PREF_RESTART_WITH_CONFIG_PORTAL "RestartPortal"
 
+#define NO_NUMBER_F -99999
+
 class IoTBaseParameter {
     public:
 
@@ -83,6 +85,9 @@ class IoTBase {
 
         // FIXME: add customHtml parameter
         void addParameter(String id, String placeholder, String defaultValue, int length);
+        
+        // helper methods for json parsing:
+        float parseJson(String jsonString, char *jsonPath);
 
     private:
         

@@ -9,6 +9,7 @@
 
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
+
 // global variable, cannot use class variable :-(
 bool shouldSaveWifiManagerConfig = false;
 
@@ -279,6 +280,83 @@ String IoTBase::_getResetReason(RESET_REASON reason)
     case 16 : return "RTCWDT_RTC_RESET (16)";      /**<16, RTC Watch dog reset digital core and rtc module*/
     default : return "NO_MEAN";
   }
+}
+
+// FIXME: pass pointer to payload
+// parse jsonPaths like $.foo[1].bar.baz[2][3].value
+float IoTBase::parseJson(String payload, char *jsonPath) {
+    float jsonValue;
+    DynamicJsonBuffer jsonBuffer;
+    const char* jsonString = payload.c_str();
+    JsonVariant root = jsonBuffer.parse(jsonString);
+    JsonVariant element;
+
+    if (root.success()) {
+        // parse jsonPath and navigate through json object:
+        char pathElement[40];
+        int pathIndex = 0;
+
+        DEBUG_PRINTF("parsing '%s'\n", jsonPath);
+        for (int i = 0; jsonPath[i] != '\0'; i++){
+            if (jsonPath[i] == '$') {
+                element = root;
+            } else if (jsonPath[i] == '.') {
+                if (pathIndex > 0) {
+                    pathElement[pathIndex++] = '\0';
+                    // printf("pathElement '%s'\n", pathElement);
+                    pathIndex = 0;
+                    element = element[pathElement];
+                    if (!element.success()) {
+                        DEBUG_PRINTF("failed to parse key %s\n", pathElement);
+                    }
+                }
+            } else if ((jsonPath[i] >= 'a' && jsonPath[i] <= 'z') 
+                    || (jsonPath[i] >= 'A' && jsonPath[i] <= 'Z') 
+                    || (jsonPath[i] >= '0' && jsonPath[i] <= '9')
+                    || jsonPath[i] == '-' || jsonPath[i] == '_'
+                    ) {
+                pathElement[pathIndex++] = jsonPath[i];
+            } else if (jsonPath[i] == '[') {
+                if (pathIndex > 0) {
+                    pathElement[pathIndex++] = '\0';
+                    // printf("pathElement '%s'\n", pathElement);
+                    pathIndex = 0;
+                    element = element[pathElement];
+                    if (!element.success()) {
+                        DEBUG_PRINTF("failed in parsing key %s\n", pathElement);
+                    }
+                }
+            } else if (jsonPath[i] == ']') {
+                pathElement[pathIndex++] = '\0';
+                int arrayIndex = strtod(pathElement, NULL);
+                // printf("index '%s' = %d\n", pathElement, arrayIndex);
+                pathIndex = 0;
+                element = element[arrayIndex];
+                if (!element.success()) {
+                    DEBUG_PRINTF("failed in parsing index %d\n", arrayIndex);
+                }
+            }
+        }  
+        // final token if any:
+        if (pathIndex > 0) {
+            pathElement[pathIndex++] = '\0';
+            // printf("pathElement '%s'\n", pathElement);
+            pathIndex = 0;
+            element = element[pathElement];
+            if (!element.success()) {
+                DEBUG_PRINTF("failed in parsing key %s\n", pathElement);
+            }
+        }
+
+        jsonValue = element.as<float>();
+
+        //jsonValue = measurements[1]["sensordatavalues"][0]["value"];
+        DEBUG_PRINTF("success reading value: %f\n", jsonValue);
+    } else {
+        jsonValue = NO_NUMBER_F;
+        DEBUG_PRINTLN("could not parse json for value");
+    }
+    return jsonValue;
 }
 
 
