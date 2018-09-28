@@ -48,7 +48,7 @@ WiFiUDP ntpUDP;
 int touch_value = 100; // default value
 
 char* mqttSubscribeValue = NULL;
-float jsonValue = 0.0;
+float jsonValue = -99999;
 
 // allow to overwrite the configuration from external file:
 
@@ -78,7 +78,7 @@ NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", offset * 3600, 60* 60 * 1000
 
 HTTPClient http;
 long httpLastRequest;
-long httpRequestDelayMs = 120000;
+long httpRequestDelayMs = 10000;
 
 void displayText(String text){
   display.setColor(WHITE);
@@ -140,6 +140,8 @@ void fetchJsonValue() {
   // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
   http.begin("http://api.luftdaten.info/v1/sensor/12758/");
 
+  char jsonPath[] = "$[1].sensordatavalues[0].value";
+
   int httpCode = http.GET();
   if(httpCode > 0) {
     Serial.printf("[HTTP] GET... code: %d\n", httpCode);
@@ -147,16 +149,9 @@ void fetchJsonValue() {
     // file found at server
     if(httpCode == HTTP_CODE_OK) {
       String payload = http.getString();
-      Serial.println(payload);            
+      Serial.println(payload);    
 
-      DynamicJsonBuffer jsonBuffer;
-      JsonArray& measurements = jsonBuffer.parseArray(payload);
-      if (measurements.success()) {
-        jsonValue = measurements[1]["sensordatavalues"][0]["value"];
-        Serial.printf("success reading value: %f\n", jsonValue);
-      } else {
-        Serial.println("could not parse json for value");
-      }
+      jsonValue = iot.parseJson(payload, jsonPath);
     }
   } else {
       Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
@@ -168,7 +163,7 @@ void displayJsonValue() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_10);
   char tempString[10];
-  if (jsonValue > 0.0) {
+  if (jsonValue != NO_NUMBER_F) {
     sprintf(tempString, "%.1f%s", jsonValue, "ug");
   } else {
     sprintf(tempString, "%s%s", "??", "ug");
