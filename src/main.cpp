@@ -84,8 +84,8 @@ char jsonPath[100] = "$[1].sensordatavalues[0].value";
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", offset * 3600, 60* 60 * 1000);
 
 HTTPClient http;
-long httpLastRequest;
-long httpRequestDelayMs = 10000;
+long httpRequestDelayMs = 120000;
+long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done at start of device
 
 void displayText(String text){
   display.setColor(WHITE);
@@ -194,18 +194,38 @@ void mqttConnect() {
   }
 }
 
+int getJsonValueIfExists(JsonObject &json, const char *key, int defaultValue) {
+  if (json[key] != NULL) {
+    return json[key];
+  }
+  DEBUG_PRINTF("no configuration found for key %s\n", key);
+  return defaultValue;
+}
+
+void setJsonValueIfExists(char *value, JsonObject& json, const char *key) {
+  if (json[key] != NULL) {
+    strcpy(value, json[key]);
+  } else {
+    DEBUG_PRINTF("no configuration found for key %s\n", key);
+  }
+}
+
 // load configuration (file or GUI) into variables
 void loadConfigCallback(JsonObject& json) {
     DEBUG_PRINTLN("loadConfigCallback called");
-    strcpy(mqttServer, json["mqtt_server"]);
-    mqttPort = json["mqtt_port"];
-    strcpy(mqttUser,  json["mqtt_user"]);
-    strcpy(mqttPassword,  json["mqtt_password"]);
-    strcpy(mqttSubscribeTopic, json["mqtt_topic"]);
-    strcpy(mqttSubscribeTopicUnit, json["mqtt_topic_unit"]);
+    setJsonValueIfExists(mqttServer, json, "mqtt_server");
+    mqttPort = getJsonValueIfExists(json, "mqtt_port", mqttPort);
+    setJsonValueIfExists(mqttUser, json, "mqtt_user");
+    setJsonValueIfExists(mqttPassword, json, "mqtt_password");
+    setJsonValueIfExists(mqttSubscribeTopic, json, "mqtt_topic");
+    setJsonValueIfExists(mqttSubscribeTopicUnit, json, "mqtt_topic_unit");
+    setJsonValueIfExists(jsonUrl, json, "json_url");
+    setJsonValueIfExists(jsonPath, json, "json_path");
     Serial.printf("mqtt_server = %s\n", mqttServer);
     Serial.printf("mqtt_port = %i\n", mqttPort);
-    Serial.printf("mqtt_topic_unit= %s\n", mqttSubscribeTopicUnit);
+    Serial.printf("mqtt_topic_unit = %s\n", mqttSubscribeTopicUnit);
+    Serial.printf("json_url = %s\n", jsonUrl);
+    Serial.printf("json_path = %s\n", jsonPath);
 }
 
 // save variables into configuration
@@ -217,6 +237,8 @@ void saveConfigCallback(JsonObject& json) {
     json["mqtt_password"] = mqttPassword;
     json["mqtt_topic"] = mqttSubscribeTopic;
     json["mqtt_topic_unit"] = mqttSubscribeTopicUnit;
+    json["json_url"] = jsonUrl;
+    json["json_path"] = jsonPath;
 }
 
 void setBrightness(uint8_t brightness) {
