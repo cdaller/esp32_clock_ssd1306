@@ -292,6 +292,8 @@ void setup() {
   iot.addParameter("mqtt_password", "mqtt password", mqttPassword, 40);
   iot.addParameter("mqtt_topic", "mqtt topic", mqttSubscribeTopic, 100);
   iot.addParameter("mqtt_topic_unit", "mqtt topic unit", mqttSubscribeTopicUnit, 5);
+  iot.addParameter("json_url", "json_url", jsonUrl, 100);
+  iot.addParameter("json_path", "json_path", jsonPath, 100);
 
   iot.begin();
   //if you get here you have connected to the WiFi
