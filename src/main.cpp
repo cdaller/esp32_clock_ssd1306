@@ -70,6 +70,13 @@ char mqttPassword[40] = "";
 char mqttSubscribeTopic[100] = "/home/ESP_Easy_Mobile/Temperature";
 char mqttSubscribeTopicUnit[5] = "°C";
 
+// directly load values from local sensor luftdaten.info:
+// char jsonUrl[100] = "http://192.168.8.100/data.json";
+// char jsonPath[100] = "$.sensordatavalues[0].value";
+
+// my sensor at luftdaten.info
+char jsonUrl[100] = "http://api.luftdaten.info/v1/sensor/12758/";
+char jsonPath[100] = "$[1].sensordatavalues[0].value";
 
 // You can specify the time server pool and the offset (in seconds, can be
 // changed later with setTimeOffset() ). Additionaly you can specify the
@@ -138,9 +145,7 @@ void displayMqttValue() {
 void fetchJsonValue() {
   Serial.println("requesting data via http");
   // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
-  http.begin("http://api.luftdaten.info/v1/sensor/12758/");
-
-  char jsonPath[] = "$[1].sensordatavalues[0].value";
+  http.begin(jsonUrl);
 
   int httpCode = http.GET();
   if(httpCode > 0) {
@@ -154,7 +159,7 @@ void fetchJsonValue() {
       jsonValue = iot.parseJson(payload, jsonPath);
     }
   } else {
-      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
   }
   http.end();
 }
