@@ -19,7 +19,7 @@ IoTBase::IoTBase() {
 /* if there was a configuration saved in SPIFFS, load it and call callback */
 void IoTBase::readConfiguration() {
     //clean FS, for testing
-    //SPIFFS.format();
+    // SPIFFS.format();
 
     //read configuration from FS json
     DEBUG_PRINTLN("mounting FS...");
@@ -282,12 +282,11 @@ String IoTBase::_getResetReason(RESET_REASON reason)
   }
 }
 
-// FIXME: pass pointer to payload
 // parse jsonPaths like $.foo[1].bar.baz[2][3].value equals to foo[1].bar.baz[2][3].value
-float IoTBase::parseJson(String payload, char *jsonPath) {
+float IoTBase::parseJson(char* jsonString, char *jsonPath) {
     float jsonValue;
     DynamicJsonBuffer jsonBuffer;
-    const char* jsonString = payload.c_str();
+    
     JsonVariant root = jsonBuffer.parse(jsonString);
     JsonVariant element = root;
 

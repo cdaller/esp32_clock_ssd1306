@@ -156,7 +156,7 @@ void fetchJsonValue() {
       String payload = http.getString();
       Serial.println(payload);    
 
-      jsonValue = iot.parseJson(payload, jsonPath);
+      jsonValue = iot.parseJson(&payload[0], jsonPath);
     }
   } else {
     Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());

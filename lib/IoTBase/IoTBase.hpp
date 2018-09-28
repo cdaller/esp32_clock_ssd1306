@@ -87,7 +87,7 @@ class IoTBase {
         void addParameter(String id, String placeholder, String defaultValue, int length);
         
         // helper methods for json parsing:
-        float parseJson(String jsonString, char *jsonPath);
+        float parseJson(char* jsonString, char *jsonPath);
 
     private:
         
