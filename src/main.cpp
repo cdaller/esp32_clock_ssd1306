@@ -135,6 +135,35 @@ void displayMqttValue() {
   display.drawString(display.width(), 4, tempString);
 }
 
+void fetchJsonValue() {
+  Serial.println("requesting data via http");
+  // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
+  http.begin("http://api.luftdaten.info/v1/sensor/12758/");
+
+  int httpCode = http.GET();
+  if(httpCode > 0) {
+    Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+    // file found at server
+    if(httpCode == HTTP_CODE_OK) {
+      String payload = http.getString();
+      Serial.println(payload);            
+
+      DynamicJsonBuffer jsonBuffer;
+      JsonArray& measurements = jsonBuffer.parseArray(payload);
+      if (measurements.success()) {
+        jsonValue = measurements[1]["sensordatavalues"][0]["value"];
+        Serial.printf("success reading value: %f\n", jsonValue);
+      } else {
+        Serial.println("could not parse json for value");
+      }
+    }
+  } else {
+      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+  }
+  http.end();
+}
+
 void displayJsonValue() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_10);
@@ -387,33 +416,8 @@ void loop() {
 
   if (millis() - httpLastRequest > httpRequestDelayMs) {
     httpLastRequest = millis();
-    Serial.println("requesting data via http");
-    // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
-    http.begin("http://api.luftdaten.info/v1/sensor/12758/");
-
-    int httpCode = http.GET();
-    if(httpCode > 0) {
-        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-
-        // file found at server
-        if(httpCode == HTTP_CODE_OK) {
-          String payload = http.getString();
-          Serial.println(payload);            
-
-          DynamicJsonBuffer jsonBuffer;
-          JsonArray& measurements = jsonBuffer.parseArray(payload);
-          if (measurements.success()) {
-            jsonValue = measurements[1]["sensordatavalues"][0]["value"];
-            Serial.printf("success reading value: %f\n", jsonValue);
-          } else {
-            Serial.println("could not parse json for value");
-          }
-        }
-      } else {
-          Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-      }
-      http.end();
-    }
+    fetchJsonValue();
+  }
 
   //Serial.println("display start");
   display.clear();
