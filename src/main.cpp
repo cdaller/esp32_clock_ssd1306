@@ -23,6 +23,10 @@
 
 #include <HTTPClient.h>
 
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+
 // reading internal temperatur sensor:
 #ifdef __cplusplus
 extern "C" {
@@ -33,12 +37,24 @@ uint8_t temprature_sens_read();
 #endif
 uint8_t temprature_sens_read();
 
+// display
 #include "font.h"
 
 #define DISPLAY_I2C 0x3c
 #define DISPLAY_SDA 5
 #define DISPLAY_SCL 4
 SSD1306Wire  display(DISPLAY_I2C, DISPLAY_SDA, DISPLAY_SCL);
+
+// DHT22
+#define DHTPIN            2         // Pin which is connected to the DHT sensor.
+#define DHTTYPE           DHT22     // DHT 22 (AM2302)
+DHT_Unified dht(DHTPIN, DHTTYPE);
+uint32_t sensorDelayMs;
+long sensorLastRequest = 0;
+
+// light sensor
+#define LIGHT_SENSOR_PIN A0
+
 WiFiUDP ntpUDP;
 
 // PIN to start configuration portal:
@@ -106,8 +122,44 @@ float readInternalTemperature() {
   return temperatureInC;
 }
 
+void readSensorTemperature() {
+  sensors_event_t event;  
+  dht.temperature().getEvent(&event);
+  // returns value or nan - check with isnam(value)
+  //return event.temperature;
+  if (isnan(event.temperature)) {
+    Serial.println("Error reading temperature!");
+  } else {
+    Serial.print("Temperature: ");
+    Serial.print(event.temperature);
+    Serial.println(" *C");
+  }
+}
+
+void readSensorHumidity() {
+  // Get humidity event and print its value.
+  sensors_event_t event;  
+  dht.humidity().getEvent(&event);
+  // returns value or nan - check with isnam(value)
+  //return event.relative_humidity;
+  if (isnan(event.relative_humidity)) {
+    Serial.println("Error reading humidity!");
+  } else {
+    Serial.print("Humidity: ");
+    Serial.print(event.relative_humidity);
+    Serial.println("%");
+  }
+}
+  
+
 void displayTemperature() {
   uint8_t temperatureInC = readInternalTemperature();
+
+  // if (millis() - sensorLastRequest > sensorDelayMs) {
+  //   sensorLastRequest = millis();
+  //   readSensorTemperature();
+  //   readSensorHumidity();
+  // }
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
@@ -259,6 +311,20 @@ void setBrightness(uint8_t brightness) {
   display.setContrast(contrast, precharge, comdetect);
 }
 
+// read value from analog light sensor and set as brightness:
+void autoBrightnessFromLightSensor() {
+  int rawValue = analogRead(LIGHT_SENSOR_PIN); 
+  //Serial.printf("light: %d\n", rawValue);
+  int displayBrightness = rawValue / 16;
+
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_10);
+  char tempString[8];
+  sprintf(tempString, "%3d", displayBrightness);
+  display.drawString(0, display.getHeight() - 10, tempString);
+
+  setBrightness(displayBrightness);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -387,6 +453,37 @@ void setup() {
   // allow reuse (if server supports it)
   http.setReuse(true);
 
+  // DHT22
+  dht.begin();
+    sensor_t sensor;
+  dht.temperature().getSensor(&sensor);
+  Serial.println("------------------------------------");
+  Serial.println("Temperature");
+  Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+  Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+  Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+  Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
+  Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
+  Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");  
+  Serial.println("------------------------------------");
+  // Print humidity sensor details.
+  dht.humidity().getSensor(&sensor);
+  Serial.println("------------------------------------");
+  Serial.println("Humidity");
+  Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+  Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+  Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+  Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
+  Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
+  Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");  
+  Serial.println("------------------------------------");
+  // Set delay between sensor readings based on sensor details.
+  sensorDelayMs = sensor.min_delay / 1000;
+
+  // light sensor
+  pinMode(LIGHT_SENSOR_PIN, INPUT);
+
+
   Serial.println("setup end");
 }
 
@@ -461,7 +558,7 @@ void loop() {
   // display.setFont(ArialMT_Plain_10);
   // display.drawString(display.width(), 4, "12345678890");
 
-  setBrightness(128);
+  autoBrightnessFromLightSensor();
 
   display.display();
 
