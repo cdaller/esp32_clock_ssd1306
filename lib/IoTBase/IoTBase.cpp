@@ -262,9 +262,13 @@ void IoTBase::restartWithConfigurationPortal() {
 
 //callback notifying us of the need to save config
 void IoTBase::_saveWifiManagerConfigCallback() {
-  DEBUG_PRINTLN("Should save config");
-  shouldSaveWifiManagerConfig = true;
+    DEBUG_PRINTLN("Should save config");
+    shouldSaveWifiManagerConfig = true;
 };
+
+boolean IoTBase::isSummerTime() {
+    return NTP.isSummerTime();
+}
 
 String IoTBase::_getResetReason(RESET_REASON reason)
 {

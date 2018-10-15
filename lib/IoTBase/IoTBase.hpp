@@ -89,6 +89,8 @@ class IoTBase {
         // helper methods for json parsing:
         float parseJson(char* jsonString, char *jsonPath);
 
+        boolean isSummerTime();
+
     private:
         
         static void _saveWifiManagerConfigCallback();

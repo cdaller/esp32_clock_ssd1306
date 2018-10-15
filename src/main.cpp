@@ -107,11 +107,19 @@ void displayText(String text){
 void displayTime() {
   char timeStr[6];
   time_t moment = now();
+
+  // display hours:minutes
   sprintf (timeStr, "%02d:%02d", hour(moment), minute(moment));
   displayText(timeStr);
 
   //display second bar
   display.fillRect(1, 0, display.width() * second(moment) / 59, 2);
+
+  char dateStr[14];
+  sprintf (dateStr, "%02d.%02d.%4d %s", day (moment), month (moment), year (moment), iot.isSummerTime() ? "S" : "W");
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(display.getWidth(), display.getHeight() - 10, dateStr);
 }
 
 float readInternalTemperature() {
