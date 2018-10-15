@@ -4,10 +4,15 @@
  */
 
 #define DEBUG 1
+#define TIME_ZONE 1
+#define TIME_ZONE_MINUTES 0
 
 #include "IoTBase.hpp"
 
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+
+#include <TimeLib.h>
+#include <NtpClientLib.h>
 
 
 // global variable, cannot use class variable :-(
@@ -155,6 +160,8 @@ bool IoTBase::begin() {
 
     Serial.print("local ip: ");
     DEBUG_PRINTLN(WiFi.localIP());
+
+    NTP.begin ("europe.pool.ntp.org", TIME_ZONE, true, TIME_ZONE_MINUTES);
 
     #ifdef DEBUG
         Serial.println("DEBUG is on in IoTBase");

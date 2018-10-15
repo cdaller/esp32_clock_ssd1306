@@ -7,12 +7,10 @@
 // application specific libraries
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
 
-#include <NTPClient.h>
 // change next line to use with another board/shield
 //#include <ESP8266WiFi.h>
 #include <WiFi.h> // for WiFi shield
 //#include <WiFi101.h> // for WiFi 101 shield or MKR1000
-#include <WiFiUdp.h>
 
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
@@ -26,6 +24,8 @@
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 #include <DHT_U.h>
+
+#include <TimeLib.h>
 
 // reading internal temperatur sensor:
 #ifdef __cplusplus
@@ -54,8 +54,6 @@ long sensorLastRequest = 0;
 
 // light sensor
 #define LIGHT_SENSOR_PIN A0
-
-WiFiUDP ntpUDP;
 
 // PIN to start configuration portal:
 #define TRIGGER_PIN 0
@@ -94,11 +92,6 @@ char mqttSubscribeTopicUnit[5] = "°C";
 char jsonUrl[100] = "http://api.luftdaten.info/v1/sensor/12758/";
 char jsonPath[100] = "$[1].sensordatavalues[0].value";
 
-// You can specify the time server pool and the offset (in seconds, can be
-// changed later with setTimeOffset() ). Additionaly you can specify the
-// update interval (in milliseconds, can be changed using setUpdateInterval() ).
-NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", offset * 3600, 60* 60 * 1000);
-
 HTTPClient http;
 long httpRequestDelayMs = 120000;
 long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done at start of device
@@ -109,6 +102,16 @@ void displayText(String text){
   // works: display.setFont(ArialMT_Plain_24);
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.drawString(64, 15, text);
+}
+
+void displayTime() {
+  char timeStr[6];
+  time_t moment = now();
+  sprintf (timeStr, "%02d:%02d", hour(moment), minute(moment));
+  displayText(timeStr);
+
+  //display second bar
+  display.fillRect(1, 0, display.width() * second(moment) / 59, 2);
 }
 
 float readInternalTemperature() {
@@ -315,6 +318,7 @@ void setBrightness(uint8_t brightness) {
 void autoBrightnessFromLightSensor() {
   int rawValue = analogRead(LIGHT_SENSOR_PIN); 
   //Serial.printf("light: %d\n", rawValue);
+  // FIXME: see https://learn.sparkfun.com/tutorials/tsl2561-luminosity-sensor-hookup-guide/all
   int displayBrightness = rawValue / 16;
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
@@ -331,14 +335,6 @@ void setup() {
 
   //clean FS, for testing
   //SPIFFS.format();
-
-  // preferences.begin("NTP", true);
-  // offset = preferences.getInt("offset", offset);
-  // Serial.print("offset from preferences: ");
-  // Serial.println(offset);
-  // preferences.end();
-
-  timeClient.setTimeOffset(offset*3600);
 
   // pinMode(0,INPUT);
   // digitalWrite(0,HIGH);
@@ -430,17 +426,6 @@ void setup() {
   Serial.print("ESP IP address: ");
   Serial.println(WiFi.localIP());  
 
-  display.clear();
-  displayText("NTP");
-  display.display();
-
-  // NTP
-  timeClient.begin();
-
-  while (!timeClient.forceUpdate()){
-    delay(10);
-  }
-
   // MQTT Server
   display.clear();
   displayText("MQTT");
@@ -487,8 +472,6 @@ void setup() {
   Serial.println("setup end");
 }
 
-char buffer[5];
-
 void loop() {
   //Serial.println("loop start");
 
@@ -509,32 +492,7 @@ void loop() {
 
   //Serial.println("MQTT loop");
   mqttClient.loop();
-  //Serial.println("NTP update");
-  timeClient.update();
-
-  // change time zone (offset):
-  // reading touch value disabled, does not work reliable on single wire
-  // needs some real switch or bigger metal plate to push on
-  // see https://nick.zoic.org/art/esp32-capacitive-sensors/
-  // touch_value = touchRead(TOUCH_PIN);
-  if (touch_value < 20 ){
-    Serial.print("Touch Value: ");
-    Serial.println(touch_value);
-
-    offset += 1;
-    if (offset > 14) {
-      offset = -11;
-    }
   
-    Serial.print("Set time offset to: ");
-    Serial.println(offset);
-    timeClient.setTimeOffset(offset*3600);
-
-    preferences.begin("NTP", false);
-    preferences.putInt("offset", offset);
-    preferences.end();
-  }
-
   if (millis() - httpLastRequest > httpRequestDelayMs) {
     httpLastRequest = millis();
     fetchJsonValue();
@@ -543,16 +501,11 @@ void loop() {
   //Serial.println("display start");
   display.clear();
 
-  //display second bar
-  display.fillRect(1, 0, display.width() * timeClient.getSeconds() / 59, 2);
+  displayTime();
 
   displayTemperature();
   displayMqttValue();
   displayJsonValue();
-
-  //display time
-  sprintf(buffer, "%2d:%02d", timeClient.getHours(), timeClient.getMinutes());
-  displayText(buffer);
 
   // display.setTextAlignment(TEXT_ALIGN_RIGHT);
   // display.setFont(ArialMT_Plain_10);
