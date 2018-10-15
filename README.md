@@ -1,5 +1,7 @@
 # esp32_clock_ssd1306
 
+![ESP32 Clock](/images/clock.jpg)
+
 An ESP32 lolin32-clone with a small OLED SSD1306 display serves as a small clock with some additional features:
 
 * clock is syncronized with NTP over the network
