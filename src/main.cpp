@@ -1,6 +1,7 @@
 #define DEBUG 1
 static const char* TAG = "CDclock";
 
+#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 #include "esp_log.h"
 
 // not working - compiler does not find the function :-(
@@ -524,8 +525,11 @@ void loop() {
 
   iot.loop();
 
-  ArduinoOTA.handle();
-  //Serial.println("After OTA handle");
+  if (iot.isWifiConnected()) {
+    Serial.println("before AduinoOTA.handle()");
+    ArduinoOTA.handle();
+  }
+  
 
   // start configuration portal:
   if (digitalRead(TRIGGER_PIN) == LOW ) {
