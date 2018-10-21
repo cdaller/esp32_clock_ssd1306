@@ -17,8 +17,6 @@
 
 #include <PubSubClient.h>
 
-#include <Preferences.h>
-
 #include <HTTPClient.h>
 
 #include <Adafruit_Sensor.h>
@@ -69,11 +67,6 @@ float jsonValue = -99999;
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
-Preferences preferences;
-
-// timezone offset
-int offset = 2;
-
 IoTBase iot;
 
 // configuration default values:
@@ -95,6 +88,12 @@ char jsonPath[100] = "$[1].sensordatavalues[0].value";
 HTTPClient http;
 long httpRequestDelayMs = 120000;
 long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done at start of device
+
+void displayWifiRSSI() {
+    uint8_t quality = iot.getWifiQuality();
+    display.fillRect(display.width() - 2 , 0, display.width(), display.height() * quality / 100);
+}
+
 
 void displayText(String text){
   display.setColor(WHITE);
@@ -483,6 +482,8 @@ void setup() {
 void loop() {
   //Serial.println("loop start");
 
+  iot.loop();
+
   ArduinoOTA.handle();
   //Serial.println("After OTA handle");
 
@@ -514,6 +515,7 @@ void loop() {
   displayTemperature();
   displayMqttValue();
   displayJsonValue();
+  displayWifiRSSI();
 
   // display.setTextAlignment(TEXT_ALIGN_RIGHT);
   // display.setFont(ArialMT_Plain_10);

@@ -174,6 +174,37 @@ bool IoTBase::begin() {
     return true;
 }
 
+/**
+ * Invoke loop in the loop method of main application to allow IoTBase
+ * to do some things on a regular basis. 
+ */
+void IoTBase::loop() {
+    _recordWifiQuality();
+}
+
+/** 
+ * take the last 10 Wifi quality values to get a stable average
+ */
+void IoTBase::_recordWifiQuality() {
+    long dBm = WiFi.RSSI(); // values between -50 (good) and -100 (bad)
+    long quality = (uint8_t) 2 * (dBm + 100);
+    DEBUG_PRINTF2("Wifi rssi=%ld, quality=%ld\n", dBm, quality);
+
+    _wifiQualityMeasurements[_wifiQualityMeasurementsIndex++] = quality;
+    if (_wifiQualityMeasurementsIndex >= 10) {
+        _wifiQualityMeasurementsIndex = 0;
+    }
+}
+
+uint8_t IoTBase::getWifiQuality() {
+    // calculate average of last 10 measurements:
+    uint16_t sum = 0;
+    for (uint8_t index = 0; index < 10; index++) {
+        sum += _wifiQualityMeasurements[index];
+    }
+    return (uint8_t) (sum / 10);
+}
+
 void IoTBase::addParameter(String id, String placeholder, String defaultValue, int length) {
   	_parameters.emplace_back(id, std::move(placeholder), std::move(defaultValue), length);
 }
@@ -368,7 +399,6 @@ float IoTBase::parseJson(char* jsonString, char *jsonPath) {
     }
     return jsonValue;
 }
-
 
 IoTBaseParameter::IoTBaseParameter(String p_id, String p_placeholder, String p_defaultValue, int p_length) {
     id = std::move(p_id);

@@ -76,8 +76,9 @@ class IoTBase {
 
         void readConfiguration();
         bool begin();
-        void restartWithConfigurationPortal();
+        void loop();
 
+        void restartWithConfigurationPortal();
 
         void setLoadConfigCallback(void (*func)(JsonObject&));
         void setSaveConfigCallback(void (*func)(JsonObject&));
@@ -90,6 +91,8 @@ class IoTBase {
         float parseJson(char* jsonString, char *jsonPath);
 
         boolean isSummerTime();
+
+        uint8_t getWifiQuality();
 
     private:
         
@@ -105,6 +108,10 @@ class IoTBase {
         String _getResetReason(RESET_REASON);
 
         std::vector<IoTBaseParameter> _parameters;
+
+        uint8_t _wifiQualityMeasurements[10];
+        uint8_t _wifiQualityMeasurementsIndex = 0;
+        void _recordWifiQuality();
 
 };
 
