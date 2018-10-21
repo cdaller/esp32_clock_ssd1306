@@ -93,6 +93,7 @@ class IoTBase {
         boolean isSummerTime();
 
         uint8_t getWifiQuality();
+        bool isWifiConnected();
 
     private:
         

@@ -186,13 +186,15 @@ void IoTBase::loop() {
  * take the last 10 Wifi quality values to get a stable average
  */
 void IoTBase::_recordWifiQuality() {
-    long dBm = WiFi.RSSI(); // values between -50 (good) and -100 (bad)
-    long quality = (uint8_t) 2 * (dBm + 100);
-    //DEBUG_PRINTF2("Wifi rssi=%ld, quality=%ld\n", dBm, quality);
+    if (WiFi.status() == WL_CONNECTED) {
+        long dBm = WiFi.RSSI(); // values between -50 (good) and -100 (bad)
+        long quality = (uint8_t) 2 * (dBm + 100);
+        //DEBUG_PRINTF2("Wifi rssi=%ld, quality=%ld\n", dBm, quality);
 
-    _wifiQualityMeasurements[_wifiQualityMeasurementsIndex++] = quality;
-    if (_wifiQualityMeasurementsIndex >= 10) {
-        _wifiQualityMeasurementsIndex = 0;
+        _wifiQualityMeasurements[_wifiQualityMeasurementsIndex++] = quality;
+        if (_wifiQualityMeasurementsIndex >= 10) {
+            _wifiQualityMeasurementsIndex = 0;
+        }
     }
 }
 
@@ -203,6 +205,10 @@ uint8_t IoTBase::getWifiQuality() {
         sum += _wifiQualityMeasurements[index];
     }
     return (uint8_t) (sum / 10);
+}
+
+bool IoTBase::isWifiConnected() {
+    return WiFi.status() == WL_CONNECTED;
 }
 
 void IoTBase::addParameter(String id, String placeholder, String defaultValue, int length) {

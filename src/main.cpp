@@ -1,4 +1,13 @@
 #define DEBUG 1
+static const char* TAG = "CDclock";
+
+#include "esp_log.h"
+
+// not working - compiler does not find the function :-(
+// esp_log_level_set("*", ESP_LOG_DEBUG);
+// esp_log_level_set("iot", ESP_LOG_WARN); 
+// esp_log_level_set("wifi", ESP_LOG_WARN); 
+
 
 // framework libraries:
 #include <debug.hpp>
@@ -90,17 +99,24 @@ long httpRequestDelayMs = 120000;
 long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done at start of device
 
 void displayWifiRSSI() {
+  int maxHeight = 4;
+  if (iot.isWifiConnected()) {
     uint8_t quality = iot.getWifiQuality();
+    ESP_LOGE(TAG, "Wifi Quality: %d", quality);
     uint8_t numberOfBarsToShow = (quality - 1) / 25 + 1;
-    // print 4 bars for wifi quality:
     int x = display.getWidth() - 7; // 4 bars of 1px + 3x space between bars
-    int maxHeight = 4;
+    // print 4 bars for wifi quality:
     for (int barIndex = 0; barIndex < numberOfBarsToShow; barIndex++) {
         // display.fillRect(59 + (b*5),33 - (b*5),3,b*5,WHITE); 
         uint8_t barHeight = barIndex + 1; // FIXME: relate to maxHeigth!
         display.fillRect(x + 2 * barIndex, maxHeight - barHeight, 1, barHeight); 
-      }
-    //display.fillRect(display.width() - 2 , 20, display.width(), (display.height() - 40) * quality / 100);
+    }
+  } else {
+    display.setColor(WHITE);
+    int x = display.getWidth() - maxHeight;
+    display.drawLine(x, 0, display.getWidth() - 1 , maxHeight);
+    display.drawLine(x, maxHeight, display.getWidth() - 1 , 0);
+  }
 }
 
 void displayText(String text){
@@ -225,6 +241,10 @@ void displayMqttValue() {
 }
 
 void fetchJsonValue() {
+  if (!iot.isWifiConnected()) {
+    ESP_LOGI(TAG, "Not connected to Wifi, skip fetching json value\n");    
+    return;
+  }
   Serial.println("requesting data via http");
   // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
   http.begin(jsonUrl);
