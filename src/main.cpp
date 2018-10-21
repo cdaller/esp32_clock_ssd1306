@@ -129,7 +129,7 @@ void displayTime() {
 
   // show 15sec markers in seconds bar:
   display.setColor(INVERSE);
-  for (int second = 0; second < 60; second+=10) {
+  for (int second = 0; second <= 60; second+=10) {
     display.setPixel(getXForSecond(second), 0);
   }
   display.setColor(WHITE);
