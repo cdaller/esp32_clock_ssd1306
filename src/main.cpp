@@ -19,9 +19,9 @@
 
 #include <HTTPClient.h>
 
-#include <Adafruit_Sensor.h>
-#include <DHT.h>
-#include <DHT_U.h>
+// #include <Adafruit_Sensor.h>
+// #include <DHT.h>
+// #include <DHT_U.h>
 
 #include <TimeLib.h>
 
@@ -44,11 +44,11 @@ uint8_t temprature_sens_read();
 SSD1306Wire  display(DISPLAY_I2C, DISPLAY_SDA, DISPLAY_SCL);
 
 // DHT22
-#define DHTPIN            2         // Pin which is connected to the DHT sensor.
-#define DHTTYPE           DHT22     // DHT 22 (AM2302)
-DHT_Unified dht(DHTPIN, DHTTYPE);
-uint32_t sensorDelayMs;
-long sensorLastRequest = 0;
+// #define DHTPIN            2         // Pin which is connected to the DHT sensor.
+// #define DHTTYPE           DHT22     // DHT 22 (AM2302)
+// DHT_Unified dht(DHTPIN, DHTTYPE);
+// uint32_t sensorDelayMs;
+// long sensorLastRequest = 0;
 
 // light sensor
 #define LIGHT_SENSOR_PIN A0
@@ -91,9 +91,17 @@ long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done
 
 void displayWifiRSSI() {
     uint8_t quality = iot.getWifiQuality();
-    display.fillRect(display.width() - 2 , 0, display.width(), display.height() * quality / 100);
+    uint8_t numberOfBarsToShow = (quality - 1) / 25 + 1;
+    // print 4 bars for wifi quality:
+    int x = display.getWidth() - 7; // 4 bars of 1px + 3x space between bars
+    int maxHeight = 4;
+    for (int barIndex = 0; barIndex < numberOfBarsToShow; barIndex++) {
+        // display.fillRect(59 + (b*5),33 - (b*5),3,b*5,WHITE); 
+        uint8_t barHeight = barIndex + 1; // FIXME: relate to maxHeigth!
+        display.fillRect(x + 2 * barIndex, maxHeight - barHeight, 1, barHeight); 
+      }
+    //display.fillRect(display.width() - 2 , 20, display.width(), (display.height() - 40) * quality / 100);
 }
-
 
 void displayText(String text){
   display.setColor(WHITE);
@@ -101,6 +109,11 @@ void displayText(String text){
   // works: display.setFont(ArialMT_Plain_24);
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.drawString(64, 15, text);
+}
+
+uint16_t getXForSecond(int second) {
+  // leave 20 pixel on right edge for wifi strength) 
+  return (display.width() - 20) * second / 59;
 }
 
 void displayTime() {
@@ -112,7 +125,14 @@ void displayTime() {
   displayText(timeStr);
 
   //display second bar
-  display.fillRect(1, 0, display.width() * second(moment) / 59, 2);
+  display.fillRect(1, 0, getXForSecond(second(moment)), 2);
+
+  // show 15sec markers in seconds bar:
+  display.setColor(INVERSE);
+  for (int second = 0; second < 60; second+=10) {
+    display.setPixel(getXForSecond(second), 0);
+  }
+  display.setColor(WHITE);
 
   char dateStr[14];
   sprintf (dateStr, "%02d.%02d.%4d %s", day (moment), month (moment), year (moment), iot.isSummerTime() ? "S" : "W");
@@ -132,34 +152,34 @@ float readInternalTemperature() {
   return temperatureInC;
 }
 
-void readSensorTemperature() {
-  sensors_event_t event;  
-  dht.temperature().getEvent(&event);
-  // returns value or nan - check with isnam(value)
-  //return event.temperature;
-  if (isnan(event.temperature)) {
-    Serial.println("Error reading temperature!");
-  } else {
-    Serial.print("Temperature: ");
-    Serial.print(event.temperature);
-    Serial.println(" *C");
-  }
-}
+// void readSensorTemperature() {
+//   sensors_event_t event;  
+//   dht.temperature().getEvent(&event);
+//   // returns value or nan - check with isnam(value)
+//   //return event.temperature;
+//   if (isnan(event.temperature)) {
+//     Serial.println("Error reading temperature!");
+//   } else {
+//     Serial.print("Temperature: ");
+//     Serial.print(event.temperature);
+//     Serial.println(" *C");
+//   }
+// }
 
-void readSensorHumidity() {
-  // Get humidity event and print its value.
-  sensors_event_t event;  
-  dht.humidity().getEvent(&event);
-  // returns value or nan - check with isnam(value)
-  //return event.relative_humidity;
-  if (isnan(event.relative_humidity)) {
-    Serial.println("Error reading humidity!");
-  } else {
-    Serial.print("Humidity: ");
-    Serial.print(event.relative_humidity);
-    Serial.println("%");
-  }
-}
+// void readSensorHumidity() {
+//   // Get humidity event and print its value.
+//   sensors_event_t event;  
+//   dht.humidity().getEvent(&event);
+//   // returns value or nan - check with isnam(value)
+//   //return event.relative_humidity;
+//   if (isnan(event.relative_humidity)) {
+//     Serial.println("Error reading humidity!");
+//   } else {
+//     Serial.print("Humidity: ");
+//     Serial.print(event.relative_humidity);
+//     Serial.println("%");
+//   }
+// }
   
 
 void displayTemperature() {
@@ -446,31 +466,31 @@ void setup() {
   http.setReuse(true);
 
   // DHT22
-  dht.begin();
-    sensor_t sensor;
-  dht.temperature().getSensor(&sensor);
-  Serial.println("------------------------------------");
-  Serial.println("Temperature");
-  Serial.print  ("Sensor:       "); Serial.println(sensor.name);
-  Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
-  Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
-  Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
-  Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
-  Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");  
-  Serial.println("------------------------------------");
-  // Print humidity sensor details.
-  dht.humidity().getSensor(&sensor);
-  Serial.println("------------------------------------");
-  Serial.println("Humidity");
-  Serial.print  ("Sensor:       "); Serial.println(sensor.name);
-  Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
-  Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
-  Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
-  Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
-  Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");  
-  Serial.println("------------------------------------");
+  // dht.begin();
+  //   sensor_t sensor;
+  // dht.temperature().getSensor(&sensor);
+  // Serial.println("------------------------------------");
+  // Serial.println("Temperature");
+  // Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+  // Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+  // Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+  // Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println(" *C");
+  // Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println(" *C");
+  // Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println(" *C");  
+  // Serial.println("------------------------------------");
+  // // Print humidity sensor details.
+  // dht.humidity().getSensor(&sensor);
+  // Serial.println("------------------------------------");
+  // Serial.println("Humidity");
+  // Serial.print  ("Sensor:       "); Serial.println(sensor.name);
+  // Serial.print  ("Driver Ver:   "); Serial.println(sensor.version);
+  // Serial.print  ("Unique ID:    "); Serial.println(sensor.sensor_id);
+  // Serial.print  ("Max Value:    "); Serial.print(sensor.max_value); Serial.println("%");
+  // Serial.print  ("Min Value:    "); Serial.print(sensor.min_value); Serial.println("%");
+  // Serial.print  ("Resolution:   "); Serial.print(sensor.resolution); Serial.println("%");  
+  // Serial.println("------------------------------------");
   // Set delay between sensor readings based on sensor details.
-  sensorDelayMs = sensor.min_delay / 1000;
+  // sensorDelayMs = sensor.min_delay / 1000;
 
   // light sensor
   pinMode(LIGHT_SENSOR_PIN, INPUT);

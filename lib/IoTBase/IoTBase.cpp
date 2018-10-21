@@ -188,7 +188,7 @@ void IoTBase::loop() {
 void IoTBase::_recordWifiQuality() {
     long dBm = WiFi.RSSI(); // values between -50 (good) and -100 (bad)
     long quality = (uint8_t) 2 * (dBm + 100);
-    DEBUG_PRINTF2("Wifi rssi=%ld, quality=%ld\n", dBm, quality);
+    //DEBUG_PRINTF2("Wifi rssi=%ld, quality=%ld\n", dBm, quality);
 
     _wifiQualityMeasurements[_wifiQualityMeasurementsIndex++] = quality;
     if (_wifiQualityMeasurementsIndex >= 10) {
