@@ -1,5 +1,4 @@
 #define DEBUG 1
-static const char* TAG = "CDclock";
 
 #define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
 #include "esp_log.h"
@@ -152,7 +151,8 @@ void displayTime() {
   display.setColor(WHITE);
 
   char dateStr[14];
-  sprintf (dateStr, "%02d.%02d.%4d %s", day (moment), month (moment), year (moment), iot.isSummerTime() ? "S" : "W");
+  // sprintf (dateStr, "%02d.%02d.%4d %s", day (moment), month (moment), year (moment), iot.isSummerTime() ? "S" : "W");
+  sprintf (dateStr, "%02d.%02d.%4d", day (moment), month (moment), year (moment));
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   display.setFont(ArialMT_Plain_10);
   display.drawString(display.getWidth(), display.getHeight() - 10, dateStr);
@@ -405,7 +405,7 @@ void setup() {
   iot.addParameter("json_url", "json_url", jsonUrl, 100);
   iot.addParameter("json_path", "json_path", jsonPath, 100);
 
-  iot.begin();
+  iot.begin((char *) "esp32clock");
   //if you get here you have connected to the WiFi
 
   // display.clear();
