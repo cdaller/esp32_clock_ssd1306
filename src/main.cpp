@@ -91,7 +91,7 @@ char mqttSubscribeTopicUnit[5] = "°C";
 // char jsonPath[100] = "$.sensordatavalues[0].value";
 
 // my sensor at luftdaten.info
-char jsonUrl[100] = "http://api.luftdaten.info/v1/sensor/12758/";
+char jsonUrl[100] = "http://data.sensor.community/airrohr/v1/sensor/12758/";
 char jsonPath[100] = "$[1].sensordatavalues[0].value";
 
 HTTPClient http;
