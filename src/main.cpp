@@ -230,28 +230,26 @@ void setupOTA() {
     else // U_SPIFFS
       type = "filesystem";
     // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating " + type);
+    ESP_LOGD(TAG, "OTA Start updating %s", type);
   })
   .onEnd([]() {
-    Serial.println("\nEnd updating");
+    ESP_LOGI(TAG, "OTA End updating");
   })
   .onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    ESP_LOGI(TAG, "OTA Progress: %u%%\r", (progress / (total / 100)));
   })
   .onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    ESP_LOGE(TAG, "Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) ESP_LOGE(TAG, "Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) ESP_LOGE(TAG, "Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) ESP_LOGE(TAG, "Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) ESP_LOGE(TAG, "Receive Failed");
+    else if (error == OTA_END_ERROR) ESP_LOGE(TAG, "End Failed");
   });
 
   ArduinoOTA.begin();
 
-  Serial.println("OTA Initialized");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  ESP_LOGI(TAG, "OTA Initialized, IP address:  %s", WiFi.localIP());
 }
 
 // parse jsonPaths like $.foo[1].bar.baz[2][3].value equals to foo[1].bar.baz[2][3].value
@@ -334,7 +332,7 @@ float parseJson(char* jsonString, char *jsonPath) {
 float fetchJsonValue() {
   float value = NO_NUMBER_F;
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("requesting data via http");
+    ESP_LOGD(TAG, "requesting data via http");
     // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
     // use WiFiClient / WiFiSecureClient https://github.com/espressif/arduino-esp32/issues/3347
     WiFiClient client;
@@ -343,24 +341,19 @@ float fetchJsonValue() {
 
     int httpCode = http.GET();
     if(httpCode > 0) {
-      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+      ESP_LOGD(TAG, "[HTTP] GET... code: %d", httpCode);
 
       // file found at server
       if(httpCode == HTTP_CODE_OK) {
-        Serial.println("Trace before http.getString");    
         String payload = http.getString();
-        Serial.println(payload);    
+        ESP_LOGD(TAG, payload);    
 
-        Serial.println("Trace before parseJson");    
         value = parseJson(&payload[0], jsonPathParamValue);
-        Serial.println("Trace after parseJson");    
       }
     } else {
-      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+      ESP_LOGW(TAG, "[HTTP] GET... failed, error: %s", http.errorToString(httpCode).c_str());
     }
-    Serial.println("Trace before http.end");    
     http.end();    
-    Serial.println("Trace after http.end");    
   }
   return value;
 }
@@ -399,7 +392,7 @@ void displayWifiRSSI() {
   int maxHeight = 4;
   if (WiFi.status() == WL_CONNECTED) {
     uint8_t quality = getWifiQuality();
-    ESP_LOGD(TAG, "Wifi Quality: %d", quality);
+    ESP_LOGV(TAG, "Wifi Quality: %d", quality);
     uint8_t numberOfBarsToShow = (quality - 1) / 25 + 1;
     int x = display.getWidth() - 7; // 4 bars of 1px + 3x space between bars
     // print 4 bars for wifi quality:
@@ -433,7 +426,7 @@ void displayTime() {
   char timeStr[6];
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
+    ESP_LOGW(TAG, "Failed to obtain time");
     return;
   }
   strftime(timeStr, 6, "%H:%M", &timeinfo);
@@ -504,16 +497,13 @@ void displayTemperature() {
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
  
-  Serial.print("Message arrived in topic: ");
-  Serial.println(topic);
+  ESP_LOGI(TAG, "Message arrived in topic: %s", topic);
  
-  Serial.print("Message value: ");
   payload[length] = '\0';
   // String stringValue = String((char*)payload);
   // float floatValue = stringValue.toFloat();
   mqttSubscribeValue = (char*) payload;
- 
-  Serial.println(mqttSubscribeValue);
+  ESP_LOGI(TAG, "Message value: %s", mqttSubscribeValue);
 }
 
 void displayMqttValue() {
@@ -561,7 +551,7 @@ void setBrightness(uint8_t brightness) {
 // read value from analog light sensor and set as brightness:
 void autoBrightnessFromLightSensor() {
   int rawValue = analogRead(LIGHT_SENSOR_PIN); 
-  //Serial.printf("light: %d\n", rawValue);
+  ESP_LOGD("light: %d", rawValue);
   // FIXME: see https://learn.sparkfun.com/tutorials/tsl2561-luminosity-sensor-hookup-guide/all
   int displayBrightness = rawValue / 16;
 
@@ -648,28 +638,24 @@ void setup() {
   // light sensor
   pinMode(LIGHT_SENSOR_PIN, INPUT);
 
-
   // print device name to be used for OTA (platform.ini):
-  Serial.print("ESP device name for OTA: ");
-  Serial.println(thingName);
-
-  Serial.println("setup end");
+  ESP_LOGI(TAG, "ESP device name for OTA: %s", thingName);
+  ESP_LOGD(TAG, "setup end");
 }
 
 void mqttConnect() {
   // Loop until we're reconnected
   if (!mqttClient.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    ESP_LOGI(TAG, "Attempting MQTT connection...");
     // Attempt to connect
     if (mqttClient.connect(thingName.c_str(), mqttUserParamValue, mqttPasswordParamValue)) {
-      Serial.println("connected");
+      ESP_LOGI(TAG, "connected");
       // Once connected, publish an announcement...
       //mqttClient.publish("outTopic","hello world");
       // ... and resubscribe
       mqttClient.subscribe(mqttSubscribeTopicParamValue);
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(mqttClient.state());
+      ESP_LOGW(TAG, "failed, rc=%s", mqttClient.state());
     }
   }
 }
@@ -691,10 +677,9 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     // On the first time Wifi is connected, setup OTA
     if (!wifiStarted) {
-      Serial.println("Setup OTA now");
+      ESP_LOGD(TAG, "Setup OTA now");
       ArduinoOTA.setHostname(thingName.c_str());
-      Serial.print("IP address: ");
-      Serial.println(WiFi.softAPIP());
+      ESP_LOGI(TAG, "OTA IP address: %s", WiFi.softAPIP());
       setupOTA();
 
       wifiStarted = true;
@@ -707,12 +692,11 @@ void loop() {
 
   if (needReset)
   {
-    Serial.println("Rebooting after 1 second.");
+    ESP_LOGI(TAG, "Rebooting in 1 second.");
     iotWebConf.delay(1000);
     ESP.restart();
   }
 
-  //Serial.println("MQTT loop");
   mqttClient.loop();
 
   // fetch json value ever 2min:
@@ -726,7 +710,7 @@ void loop() {
   }
 
   if (wifiStarted && !mqttClient.connected()) {
-    Serial.println("Try to connect to mqtt broker");
+    ESP_LOGD(TAG, "Try to connect to mqtt broker");
     mqttConnect();
   }
 
@@ -754,7 +738,7 @@ void loop() {
 }
 
 void wifiConnected() {
-  Serial.println("WifiConnected Callback");
+  ESP_LOGI(TAG, "WifiConnected Callback");
   setupMqttServer();
   needMqttConnect = true;
 
@@ -765,19 +749,13 @@ void wifiConnected() {
 
 void configSaved()
 {
-  Serial.println("Configuration was updated.");
-  Serial.print("Json Url: ");
-  Serial.println(jsonUrlParamValue);
-  Serial.print("Json Path: ");
-  Serial.println(jsonPathParamValue);
-  Serial.print("MQTT Server: ");
-  Serial.println(mqttServerParamValue);
-  Serial.print("MQTT Port: ");
-  Serial.println(mqttPortParamValue);
-  Serial.print("MQTT Topic: ");
-  Serial.println(mqttSubscribeTopicParamValue);
-  Serial.print("MQTT Topic Unit: ");
-  Serial.println(mqttSubscribeTopicUnitParamValue);
+  ESP_LOGI(TAG, "Configuration was updated.");
+  ESP_LOGI(TAG, "Json Url: %s", jsonUrlParamValue);
+  ESP_LOGI(TAG, "Json Path: %s", jsonPathParamValue);
+  ESP_LOGI(TAG, "MQTT Server: %s", mqttServerParamValue);
+  ESP_LOGI(TAG, "MQTT Port: %s", mqttPortParamValue);
+  ESP_LOGI(TAG, "MQTT Topic: %s", mqttSubscribeTopicParamValue);
+  ESP_LOGI(TAG, "MQTT Topic Unit: %s", mqttSubscribeTopicUnitParamValue);
 
   // changing the mode needs reset in some cases (fire2012)
   //needReset = true;  
@@ -785,7 +763,7 @@ void configSaved()
 
 bool formValidator(iotwebconf::WebRequestWrapper* webRequestWrapper)
 {
-  Serial.println("Validating form.");
+  ESP_LOGI(TAG, "Validating form.");
   bool valid = true;
 
 /*
