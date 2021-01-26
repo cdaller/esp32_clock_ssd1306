@@ -1,14 +1,9 @@
-#define DEBUG 1
-#include <debug.hpp>
-
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
 #define TIME_GMT_OFFSET_SECS 3600
 #define TIME_DAYLIGHT_OFFSET_SEC 3600
 
-
-#include <debug.hpp>
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
 
 
@@ -265,7 +260,7 @@ float parseJson(char* jsonString, char *jsonPath) {
         char pathElement[40];
         int pathIndex = 0;
 
-        DEBUG_PRINTF("parsing '%s'\n", jsonPath);
+        ESP_LOGD(TAG, "parsing '%s'", jsonPath);
         for (int i = 0; jsonPath[i] != '\0'; i++){
             if (jsonPath[i] == '$') {
                 element = root;
@@ -276,7 +271,7 @@ float parseJson(char* jsonString, char *jsonPath) {
                     pathIndex = 0;
                     element = element[pathElement];
                     if (!element.success()) {
-                        DEBUG_PRINTF("failed to parse key %s\n", pathElement);
+                        ESP_LOGW(TAG, "failed to parse key %s", pathElement);
                     }
                 }
             } else if ((jsonPath[i] >= 'a' && jsonPath[i] <= 'z') 
@@ -292,7 +287,7 @@ float parseJson(char* jsonString, char *jsonPath) {
                     pathIndex = 0;
                     element = element[pathElement];
                     if (!element.success()) {
-                        DEBUG_PRINTF("failed in parsing key %s\n", pathElement);
+                        ESP_LOGW(TAG, "failed in parsing key %s", pathElement);
                     }
                 }
             } else if (jsonPath[i] == ']') {
@@ -302,7 +297,7 @@ float parseJson(char* jsonString, char *jsonPath) {
                 pathIndex = 0;
                 element = element[arrayIndex];
                 if (!element.success()) {
-                    DEBUG_PRINTF("failed in parsing index %d\n", arrayIndex);
+                    ESP_LOGW(TAG, "failed in parsing index %d", arrayIndex);
                 }
             }
         }  
@@ -313,17 +308,17 @@ float parseJson(char* jsonString, char *jsonPath) {
             pathIndex = 0;
             element = element[pathElement];
             if (!element.success()) {
-                DEBUG_PRINTF("failed in parsing key %s\n", pathElement);
+                ESP_LOGW(TAG, "failed in parsing key %s", pathElement);
             }
         }
 
         value = element.as<float>();
 
         //jsonValue = measurements[1]["sensordatavalues"][0]["value"];
-        DEBUG_PRINTF("success reading value: %f\n", value);
+        ESP_LOGI(TAG, "success reading value: %f", value);
     } else {
         value = NO_NUMBER_F;
-        DEBUG_PRINTLN("could not parse json for value");
+        ESP_LOGI("could not parse json for value");
     }
     return value;
 }
@@ -736,9 +731,13 @@ void loop() {
 
     if (iotWebConf.getState() == IOTWEBCONF_STATE_AP_MODE) {
       displayText("AP");
+      display.setTextAlignment(TEXT_ALIGN_RIGHT);
+      display.setFont(ArialMT_Plain_10);
+      display.drawString(display.getWidth(), display.getHeight() - 10, thingName);
     }
 
     display.display();
+    lastAction = millis();
   }
 }
 
