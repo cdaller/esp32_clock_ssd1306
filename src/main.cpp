@@ -1,17 +1,16 @@
 #define DEBUG 1
+#include <debug.hpp>
 
-#define LOG_LOCAL_LEVEL ESP_LOG_DEBUG
+#define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
 
-// not working - compiler does not find the function :-(
-// esp_log_level_set("*", ESP_LOG_DEBUG);
-// esp_log_level_set("iot", ESP_LOG_WARN); 
-// esp_log_level_set("wifi", ESP_LOG_WARN); 
+#define TIME_GMT_OFFSET_SECS 3600
+#define TIME_DAYLIGHT_OFFSET_SEC 3600
 
 
-// framework libraries:
 #include <debug.hpp>
-#include <IoTBase.hpp>
+#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+
 
 // application specific libraries
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
@@ -21,8 +20,12 @@
 #include <WiFi.h> // for WiFi shield
 //#include <WiFi101.h> // for WiFi 101 shield or MKR1000
 
+#include <IotWebConf.h>
+
+#include <Arduino.h>
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
+
 
 #include <PubSubClient.h>
 
@@ -31,16 +34,6 @@
 // #include <Adafruit_Sensor.h>
 // #include <DHT.h>
 // #include <DHT_U.h>
-
-// reading internal temperatur sensor:
-#ifdef __cplusplus
-extern "C" {
-#endif
-uint8_t temprature_sens_read();
-#ifdef __cplusplus
-}
-#endif
-uint8_t temprature_sens_read();
 
 // display
 #include "font.h"
@@ -60,47 +53,353 @@ SSD1306Wire  display(DISPLAY_I2C, DISPLAY_SDA, DISPLAY_SCL);
 // light sensor
 #define LIGHT_SENSOR_PIN A0
 
-// PIN to start configuration portal:
-#define TRIGGER_PIN 0
-//#define TOUCH_PIN T1 //connected to 0
-#define TOUCH_PIN T3 //connected to 15
-int touch_value = 100; // default value
+#define NO_NUMBER_F -99999
+
+boolean jsonValueReceived = false;
+float jsonValue = NO_NUMBER_F;
+
+bool wifiStarted = false;
 
 char* mqttSubscribeValue = NULL;
-float jsonValue = -99999;
 
 // allow to overwrite the configuration from external file:
 
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
-IoTBase iot;
+// IotWebConf configuration:
+// -------------------------
+// -- Configuration specific key. The value should be modified if config structure was changed.
+#define CONFIG_VERSION "clk1"
+// -- Status indicator pin.
+//      First it will light up (kept LOW), on Wifi connection it will blink,
+//      when connected to the Wifi it will turn off (kept HIGH).
+// not working on my esp32s :-(
+#define STATUS_PIN LED_BUILTIN
+
+#ifdef ESP8266
+String ChipId = String(ESP.getChipId(), HEX);
+#elif ESP32
+String ChipId = String((uint32_t)ESP.getEfuseMac(), HEX);
+#endif
+
+String thingName = String("esp32clock-") + ChipId;
+// Initial password to connect to the Thing, when it creates an own Access Point.
+const char wifiInitialApPassword[] = "clck1234";
+
+// -- Method declarations.
+void handleRoot();
+// -- Callback methods.
+void wifiConnected();
+void configSaved();
+bool formValidator(iotwebconf::WebRequestWrapper* webRequestWrapper);
+
+DNSServer dnsServer;
+WebServer server(80);
+
+IotWebConf iotWebConf(thingName.c_str(), &dnsServer, &server, wifiInitialApPassword, CONFIG_VERSION);
+
+#define STRING_LEN 128
+#define NUMBER_LEN 32
+
+#define DEFAULT_MQTT_SERVER "192.168.8.99" // IP of MQTT Server - DNS might not work!
+#define DEFAULT_MQTT_PORT "1883"
+#define DEFAULT_MQTT_USER ""
+#define DEFAULT_MQTT_PASSWORD ""
+#define DEFAULT_MQTT_SUBSCRIBE_TOPIC "/home/ESP_Easy_Mobile/Temperature"
+#define DEFAULT_MQTT_SUBSCRIBE_TOPIC_UNIT "°C"
+#define DEFAULT_JSON_URL "http://data.sensor.community/airrohr/v1/sensor/12758/"
+#define DEFAULT_JSON_PATH "$[1].sensordatavalues[0].value"
+// directly load values from local sensor luftdaten.info:
+// "http://192.168.8.100/data.json" / "$.sensordatavalues[0].value";
 
 // configuration default values:
-char mqttServer[40] = "192.168.8.99"; // IP of MQTT Server - DNS might not work!
-int mqttPort = 1883;
-char mqttUser[40] = "";
-char mqttPassword[40] = "";
-char mqttSubscribeTopic[100] = "/home/ESP_Easy_Mobile/Temperature";
-char mqttSubscribeTopicUnit[5] = "°C";
-
-// directly load values from local sensor luftdaten.info:
-// char jsonUrl[100] = "http://192.168.8.100/data.json";
-// char jsonPath[100] = "$.sensordatavalues[0].value";
+char mqttServerParamValue[STRING_LEN]; 
+char mqttPortParamValue[NUMBER_LEN];
+char mqttUserParamValue[STRING_LEN];
+char mqttPasswordParamValue[STRING_LEN];
+char mqttSubscribeTopicParamValue[STRING_LEN];
+char mqttSubscribeTopicUnitParamValue[STRING_LEN];
 
 // my sensor at luftdaten.info
-char jsonUrl[100] = "http://data.sensor.community/airrohr/v1/sensor/12758/";
-char jsonPath[100] = "$[1].sensordatavalues[0].value";
+char jsonUrlParamValue[STRING_LEN];
+char jsonPathParamValue[STRING_LEN];
+
+iotwebconf::ParameterGroup paramGroup = iotwebconf::ParameterGroup("group1", "Configuration");
+iotwebconf::TextParameter jsonUrlParam = iotwebconf::TextParameter("Json Url", "jsonUrlParam", jsonUrlParamValue, STRING_LEN, DEFAULT_JSON_URL);
+iotwebconf::TextParameter jsonPathParam = iotwebconf::TextParameter("Json Path", "jsonPathParam", jsonPathParamValue, STRING_LEN, DEFAULT_JSON_PATH);
+iotwebconf::TextParameter mqttServerParam = iotwebconf::TextParameter("MQTT Server", "mqttServerParam", mqttServerParamValue, STRING_LEN, DEFAULT_MQTT_SERVER);
+iotwebconf::NumberParameter mqttPortParam = iotwebconf::NumberParameter("MQTT Port", "mqttPortParam", mqttPortParamValue, NUMBER_LEN, DEFAULT_MQTT_PORT, "e.g. 1883", "step='1'");
+iotwebconf::TextParameter mqttUserParam = iotwebconf::TextParameter("MQTT User", "mqttServerParam", mqttUserParamValue, STRING_LEN, DEFAULT_MQTT_USER);
+iotwebconf::PasswordParameter mqttPasswordParam = iotwebconf::PasswordParameter("MQTT Password", "mqttServerParam", mqttPasswordParamValue, STRING_LEN, DEFAULT_MQTT_PASSWORD);
+iotwebconf::TextParameter mqttSubscribeTopicParam = iotwebconf::TextParameter("MQTT Topic", "mqttTopicParam", mqttSubscribeTopicParamValue, STRING_LEN, DEFAULT_MQTT_SUBSCRIBE_TOPIC);
+iotwebconf::TextParameter mqttSubscribeTopicUnitParam = iotwebconf::TextParameter("MQTT Topic Unit", "mqttTopicUnitParam", mqttSubscribeTopicUnitParamValue, STRING_LEN, DEFAULT_MQTT_SUBSCRIBE_TOPIC_UNIT);
+
+boolean needMqttConnect = false; 
+bool needReset = false;
+
 
 HTTPClient http;
 long httpRequestDelayMs = 120000;
 long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done at start of device
+long lastActionDelayMs = 300;
+long lastAction = 0;
+
+void handleRoot()
+{
+  // Let IotWebConf test and handle captive portal requests.
+  if (iotWebConf.handleCaptivePortal())
+  {
+    // Captive portal request were already served.
+    return;
+  }
+  int64_t uptimeTotalSeconds = esp_timer_get_time() / 1000 / 1000;
+  int seconds = (uptimeTotalSeconds % 60);
+  int minutes = (uptimeTotalSeconds % 3600) / 60;
+  int hours = (uptimeTotalSeconds % 86400) / 3600;
+  int days = (uptimeTotalSeconds % (86400 * 30)) / 86400;
+
+  String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
+  s += "<title>Configuration</title></head><body><h1>Status page of ";
+  s += iotWebConf.getThingName();
+  s += "<h2>Current Values</h2>";
+  s += "<ul>";
+  s += "<li>Last value: ";
+  s += jsonValue;
+  s += "</il>";
+  s += "<li>Value received: ";
+  s += jsonValueReceived ? "yes" : "no";
+  s += "</il>";
+  s += "<li>Uptime: ";
+  s += days;
+  s += " days ";
+  s += hours;
+  s += " hours ";
+  s += minutes;
+  s += " minutes ";
+  s += seconds;
+  s += " seconds";
+  s += "</il>";
+  s += "</ul>";
+  s += "</h1><h2>Configuration</h2>";
+  s += "<ul>";
+  s += "<li>Json Url: ";
+  s += jsonUrlParamValue;
+  s += "</il>";
+  s += "<li>Json Path: ";
+  s +=jsonPathParamValue;
+  s += "</il>";
+  s += "<li>MQTT Server: ";
+  s += mqttServerParamValue;
+  s += "</il>";
+  s += "<li>MQTT Port: ";
+  s += mqttPortParamValue;
+  s += "</il>";
+  s += "<li>MQTT User: ";
+  s += mqttUserParamValue;
+  s += "</il>";
+  s += "<li>MQTT Topic: ";
+  s += mqttSubscribeTopicParamValue;
+  s += "</il>";
+  s += "<li>MQTT Topic Unit: ";
+  s += mqttSubscribeTopicUnitParamValue;
+  s += "</il>";
+  s += "</ul>";
+  s += "<div>Go to <a href='config'>configure page</a> to change configuration.</div>";
+  s += "</body></html>\n";
+
+  server.send(200, "text/html", s);
+}
+
+void setupOTA() {
+  // Port defaults to 3232
+  // ArduinoOTA.setPort(3232);
+
+  // No authentication by default
+  // ArduinoOTA.setPassword("admin");
+
+  // Password can be set with it's md5 value as well
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+  ArduinoOTA
+  .onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH)
+      type = "sketch";
+    else // U_SPIFFS
+      type = "filesystem";
+    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+    Serial.println("Start updating " + type);
+  })
+  .onEnd([]() {
+    Serial.println("\nEnd updating");
+  })
+  .onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  })
+  .onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+
+  ArduinoOTA.begin();
+
+  Serial.println("OTA Initialized");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+// parse jsonPaths like $.foo[1].bar.baz[2][3].value equals to foo[1].bar.baz[2][3].value
+float parseJson(char* jsonString, char *jsonPath) {
+    float value;
+    DynamicJsonBuffer jsonBuffer;
+    
+    JsonVariant root = jsonBuffer.parse(jsonString);
+    JsonVariant element = root;
+
+    if (root.success()) {
+        // parse jsonPath and navigate through json object:
+        char pathElement[40];
+        int pathIndex = 0;
+
+        DEBUG_PRINTF("parsing '%s'\n", jsonPath);
+        for (int i = 0; jsonPath[i] != '\0'; i++){
+            if (jsonPath[i] == '$') {
+                element = root;
+            } else if (jsonPath[i] == '.') {
+                if (pathIndex > 0) {
+                    pathElement[pathIndex++] = '\0';
+                    // printf("pathElement '%s'\n", pathElement);
+                    pathIndex = 0;
+                    element = element[pathElement];
+                    if (!element.success()) {
+                        DEBUG_PRINTF("failed to parse key %s\n", pathElement);
+                    }
+                }
+            } else if ((jsonPath[i] >= 'a' && jsonPath[i] <= 'z') 
+                    || (jsonPath[i] >= 'A' && jsonPath[i] <= 'Z') 
+                    || (jsonPath[i] >= '0' && jsonPath[i] <= '9')
+                    || jsonPath[i] == '-' || jsonPath[i] == '_'
+                    ) {
+                pathElement[pathIndex++] = jsonPath[i];
+            } else if (jsonPath[i] == '[') {
+                if (pathIndex > 0) {
+                    pathElement[pathIndex++] = '\0';
+                    // printf("pathElement '%s'\n", pathElement);
+                    pathIndex = 0;
+                    element = element[pathElement];
+                    if (!element.success()) {
+                        DEBUG_PRINTF("failed in parsing key %s\n", pathElement);
+                    }
+                }
+            } else if (jsonPath[i] == ']') {
+                pathElement[pathIndex++] = '\0';
+                int arrayIndex = strtod(pathElement, NULL);
+                // printf("index '%s' = %d\n", pathElement, arrayIndex);
+                pathIndex = 0;
+                element = element[arrayIndex];
+                if (!element.success()) {
+                    DEBUG_PRINTF("failed in parsing index %d\n", arrayIndex);
+                }
+            }
+        }  
+        // final token if any:
+        if (pathIndex > 0) {
+            pathElement[pathIndex++] = '\0';
+            // printf("pathElement '%s'\n", pathElement);
+            pathIndex = 0;
+            element = element[pathElement];
+            if (!element.success()) {
+                DEBUG_PRINTF("failed in parsing key %s\n", pathElement);
+            }
+        }
+
+        value = element.as<float>();
+
+        //jsonValue = measurements[1]["sensordatavalues"][0]["value"];
+        DEBUG_PRINTF("success reading value: %f\n", value);
+    } else {
+        value = NO_NUMBER_F;
+        DEBUG_PRINTLN("could not parse json for value");
+    }
+    return value;
+}
+
+
+float fetchJsonValue() {
+  float value = NO_NUMBER_F;
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("requesting data via http");
+    // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
+    // use WiFiClient / WiFiSecureClient https://github.com/espressif/arduino-esp32/issues/3347
+    WiFiClient client;
+    HTTPClient http;
+    http.begin(client, jsonUrlParamValue);
+
+    int httpCode = http.GET();
+    if(httpCode > 0) {
+      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+      // file found at server
+      if(httpCode == HTTP_CODE_OK) {
+        Serial.println("Trace before http.getString");    
+        String payload = http.getString();
+        Serial.println(payload);    
+
+        Serial.println("Trace before parseJson");    
+        value = parseJson(&payload[0], jsonPathParamValue);
+        Serial.println("Trace after parseJson");    
+      }
+    } else {
+      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    }
+    Serial.println("Trace before http.end");    
+    http.end();    
+    Serial.println("Trace after http.end");    
+  }
+  return value;
+}
+
+
+uint8_t _wifiQualityMeasurements[10];
+uint8_t _wifiQualityMeasurementsIndex = 0;
+
+/** 
+ * take the last 10 Wifi quality values to get a stable average
+ */
+void recordWifiQuality() {
+    if (WiFi.status() == WL_CONNECTED) {
+        long dBm = WiFi.RSSI(); // values between -50 (good) and -100 (bad)
+        long quality = (uint8_t) 2 * (dBm + 100);
+        //DEBUG_PRINTF2("Wifi rssi=%ld, quality=%ld\n", dBm, quality);
+
+        _wifiQualityMeasurements[_wifiQualityMeasurementsIndex++] = quality;
+        if (_wifiQualityMeasurementsIndex >= 10) {
+            _wifiQualityMeasurementsIndex = 0;
+        }
+    }
+}
+
+uint8_t getWifiQuality() {
+    // calculate average of last 10 measurements:
+    uint16_t sum = 0;
+    for (uint8_t index = 0; index < 10; index++) {
+        sum += _wifiQualityMeasurements[index];
+    }
+    return (uint8_t) (sum / 10);
+}
+
 
 void displayWifiRSSI() {
   int maxHeight = 4;
-  if (iot.isWifiConnected()) {
-    uint8_t quality = iot.getWifiQuality();
-    ESP_LOGE(TAG, "Wifi Quality: %d", quality);
+  if (WiFi.status() == WL_CONNECTED) {
+    uint8_t quality = getWifiQuality();
+    ESP_LOGD(TAG, "Wifi Quality: %d", quality);
     uint8_t numberOfBarsToShow = (quality - 1) / 25 + 1;
     int x = display.getWidth() - 7; // 4 bars of 1px + 3x space between bars
     // print 4 bars for wifi quality:
@@ -157,17 +456,6 @@ void displayTime() {
   display.drawString(display.getWidth(), display.getHeight() - 10, dateStr);
 }
 
-float readInternalTemperature() {
-  uint8_t temperatureInF = temprature_sens_read();
-  uint8_t temperatureInC = (temperatureInF - 32) / 1.8;
-  // internal termperature sensor is off, so 'calibrate' it
-  // not very precise, but better than nothing :-)
-  // see https://community.blynk.cc/t/esp32-internal-sensors/23041/44
-  // for different systems, this correction probably needs to be changed!
-  temperatureInC -= 12; // correction to real temperature
-  return temperatureInC;
-}
-
 // void readSensorTemperature() {
 //   sensors_event_t event;  
 //   dht.temperature().getEvent(&event);
@@ -199,7 +487,7 @@ float readInternalTemperature() {
   
 
 void displayTemperature() {
-  uint8_t temperatureInC = readInternalTemperature();
+  uint8_t temperatureInC = 0;
 
   // if (millis() - sensorLastRequest > sensorDelayMs) {
   //   sensorLastRequest = millis();
@@ -210,7 +498,7 @@ void displayTemperature() {
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
   char tempString[8];
-  sprintf(tempString, "%2d%s", temperatureInC, mqttSubscribeTopicUnit);
+  sprintf(tempString, "%2d%s", temperatureInC, mqttSubscribeTopicUnitParamValue);
   display.drawString(0, 4, tempString);
 }
 
@@ -233,37 +521,11 @@ void displayMqttValue() {
   display.setFont(ArialMT_Plain_10);
   char tempString[10];
   if (mqttSubscribeValue != NULL) {
-    sprintf(tempString, "%s%s", mqttSubscribeValue, mqttSubscribeTopicUnit);
+    sprintf(tempString, "%s%s", mqttSubscribeValue, mqttSubscribeTopicUnitParamValue);
   } else {
-    sprintf(tempString, "%s%s", "??", mqttSubscribeTopicUnit);
+    sprintf(tempString, "%s%s", "??", mqttSubscribeTopicUnitParamValue);
   }
   display.drawString(display.width(), 4, tempString);
-}
-
-void fetchJsonValue() {
-  if (!iot.isWifiConnected()) {
-    ESP_LOGI(TAG, "Not connected to Wifi, skip fetching json value\n");    
-    return;
-  }
-  Serial.println("requesting data via http");
-  // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
-  http.begin(jsonUrl);
-
-  int httpCode = http.GET();
-  if(httpCode > 0) {
-    Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-
-    // file found at server
-    if(httpCode == HTTP_CODE_OK) {
-      String payload = http.getString();
-      Serial.println(payload);    
-
-      jsonValue = iot.parseJson(&payload[0], jsonPath);
-    }
-  } else {
-    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-  }
-  http.end();
 }
 
 void displayJsonValue() {
@@ -276,71 +538,6 @@ void displayJsonValue() {
     sprintf(tempString, "%s%s", "??", "ug");
   }
   display.drawString(display.width() / 2, 4, tempString);
-}
-
-void mqttConnect() {
-  // Loop until we're reconnected
-  if (!mqttClient.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    // Attempt to connect
-    if (mqttClient.connect("ESP32Client", mqttUser, mqttPassword)) {
-      Serial.println("connected");
-      // Once connected, publish an announcement...
-      //mqttClient.publish("outTopic","hello world");
-      // ... and resubscribe
-      mqttClient.subscribe(mqttSubscribeTopic);
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(mqttClient.state());
-    }
-  }
-}
-
-int getJsonValueIfExists(JsonObject &json, const char *key, int defaultValue) {
-  if (json[key] != NULL) {
-    return json[key];
-  }
-  DEBUG_PRINTF("no configuration found for key %s\n", key);
-  return defaultValue;
-}
-
-void setJsonValueIfExists(char *value, JsonObject& json, const char *key) {
-  if (json[key] != NULL) {
-    strcpy(value, json[key]);
-  } else {
-    DEBUG_PRINTF("no configuration found for key %s\n", key);
-  }
-}
-
-// load configuration (file or GUI) into variables
-void loadConfigCallback(JsonObject& json) {
-    DEBUG_PRINTLN("loadConfigCallback called");
-    setJsonValueIfExists(mqttServer, json, "mqtt_server");
-    mqttPort = getJsonValueIfExists(json, "mqtt_port", mqttPort);
-    setJsonValueIfExists(mqttUser, json, "mqtt_user");
-    setJsonValueIfExists(mqttPassword, json, "mqtt_password");
-    setJsonValueIfExists(mqttSubscribeTopic, json, "mqtt_topic");
-    setJsonValueIfExists(mqttSubscribeTopicUnit, json, "mqtt_topic_unit");
-    setJsonValueIfExists(jsonUrl, json, "json_url");
-    setJsonValueIfExists(jsonPath, json, "json_path");
-    Serial.printf("mqtt_server = %s\n", mqttServer);
-    Serial.printf("mqtt_port = %i\n", mqttPort);
-    Serial.printf("mqtt_topic_unit = %s\n", mqttSubscribeTopicUnit);
-    Serial.printf("json_url = %s\n", jsonUrl);
-    Serial.printf("json_path = %s\n", jsonPath);
-}
-
-// save variables into configuration
-void saveConfigCallback(JsonObject& json) {
-    DEBUG_PRINTLN("saveConfigCallback called");
-    json["mqtt_server"] = mqttServer;
-    json["mqtt_port"] = mqttPort;
-    json["mqtt_user"] = mqttUser;
-    json["mqtt_password"] = mqttPassword;
-    json["mqtt_topic"] = mqttSubscribeTopic;
-    json["mqtt_topic_unit"] = mqttSubscribeTopicUnit;
-    json["json_url"] = jsonUrl;
-    json["json_path"] = jsonPath;
 }
 
 void setBrightness(uint8_t brightness) {
@@ -379,33 +576,39 @@ void autoBrightnessFromLightSensor() {
 
 void setup() {
   Serial.begin(115200);
+  esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("wifi", ESP_LOG_WARN); 
 
-  //clean FS, for testing
-  //SPIFFS.format();
+  // configuration param setup:
+  paramGroup.addItem(&jsonUrlParam);
+  paramGroup.addItem(&jsonPathParam);
+  paramGroup.addItem(&mqttServerParam);
+  paramGroup.addItem(&mqttPortParam);
+  paramGroup.addItem(&mqttUserParam);
+  paramGroup.addItem(&mqttPasswordParam);
+  paramGroup.addItem(&mqttSubscribeTopicParam);
+  paramGroup.addItem(&mqttSubscribeTopicUnitParam);
 
-  // pinMode(0,INPUT);
-  // digitalWrite(0,HIGH);
+  iotWebConf.addParameterGroup(&paramGroup);
+  iotWebConf.setWifiConnectionCallback(&wifiConnected);
+  iotWebConf.setConfigSavedCallback(&configSaved);
+  iotWebConf.setFormValidator(&formValidator);
+
+  iotWebConf.setStatusPin(STATUS_PIN);
+
+  iotWebConf.init();
+
+  // Set up required URL handlers on the web server.
+  server.on("/", handleRoot);
+  server.on("/config", [] { iotWebConf.handleConfig(); });
+  server.onNotFound([]() {
+    iotWebConf.handleNotFound();
+  });
+
 
   display.init();
   //display.flipScreenVertically();
 
-  iot.setLoadConfigCallback(loadConfigCallback);
-  iot.setSaveConfigCallback(saveConfigCallback);
-
-  // if there was a configuration saved in SPIFFS, load it and call callback 
-  iot.readConfiguration();
-
-  iot.addParameter("mqtt_server", "mqtt server", mqttServer, 40);
-  iot.addParameter("mqtt_port", "mqtt port", String(mqttPort), 6);
-  iot.addParameter("mqtt_user", "mqtt user", mqttUser, 40);
-  iot.addParameter("mqtt_password", "mqtt password", mqttPassword, 40);
-  iot.addParameter("mqtt_topic", "mqtt topic", mqttSubscribeTopic, 100);
-  iot.addParameter("mqtt_topic_unit", "mqtt topic unit", mqttSubscribeTopicUnit, 5);
-  iot.addParameter("json_url", "json_url", jsonUrl, 100);
-  iot.addParameter("json_path", "json_path", jsonPath, 100);
-
-  iot.begin((char *) "esp32clock");
-  //if you get here you have connected to the WiFi
 
   // display.clear();
   // while ( WiFi.status() != WL_CONNECTED ) {
@@ -414,76 +617,6 @@ void setup() {
   //   display.display();
   //   delay ( 500 );
   // }
-
-  char deviceName[15];
-  uint64_t chipid=ESP.getEfuseMac();//The chip ID is essentially its MAC address(length: 6 bytes).
-  uint16_t chip = (uint16_t)(chipid>>32);
-  snprintf(deviceName,15,"CDEsp32-%04X",chip);
-  
-  // print device name to be used for OTA (platform.ini):
-  Serial.print("ESP device name: ");
-  Serial.println(deviceName);
-
-
-  // OTA setup:
-  /* create a connection at port 3232 */
-  ArduinoOTA.setPort(3232);
-  /* we use mDNS instead of IP of ESP32 directly */
-  ArduinoOTA.setHostname(deviceName);
-
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
- 
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
-  
-  /* this callback function will be invoked when updating start */
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH)
-      type = "sketch";
-    else // U_SPIFFS
-      type = "filesystem";
- 
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating " + type);
-  });
-  /* this callback function will be invoked when updating end */
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd updating");
-  });
-  /* this callback function will be invoked when a number of chunks of software was flashed
-  so we can use it to calculate the progress of flashing */
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-
-  /* this callback function will be invoked when updating error */
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  /* start updating */
-  ArduinoOTA.begin();
-  Serial.print("ESP IP address: ");
-  Serial.println(WiFi.localIP());  
-
-  // MQTT Server
-  display.clear();
-  displayText("MQTT");
-  display.display();
-  mqttClient.setServer(mqttServer, mqttPort);
-  mqttClient.setCallback(mqttCallback);
-
-  mqttConnect();
-
-  // allow reuse (if server supports it)
-  http.setReuse(true);
 
   // DHT22
   // dht.begin();
@@ -516,57 +649,152 @@ void setup() {
   pinMode(LIGHT_SENSOR_PIN, INPUT);
 
 
+  // print device name to be used for OTA (platform.ini):
+  Serial.print("ESP device name for OTA: ");
+  Serial.println(thingName);
+
   Serial.println("setup end");
+}
+
+void mqttConnect() {
+  // Loop until we're reconnected
+  if (!mqttClient.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (mqttClient.connect(thingName.c_str(), mqttUserParamValue, mqttPasswordParamValue)) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      //mqttClient.publish("outTopic","hello world");
+      // ... and resubscribe
+      mqttClient.subscribe(mqttSubscribeTopicParamValue);
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqttClient.state());
+    }
+  }
+}
+
+void setupMqttServer() {
+  // MQTT Server
+  display.clear();
+  displayText("MQTT");
+  display.display();
+  mqttClient.setServer(mqttServerParamValue, atoi(mqttPortParamValue));
+  mqttClient.setCallback(mqttCallback);
+  mqttConnect();
 }
 
 void loop() {
   //Serial.println("loop start");
 
-  iot.loop();
+  // Check if Wifi is connected
+  if (WiFi.status() == WL_CONNECTED) {
+    // On the first time Wifi is connected, setup OTA
+    if (!wifiStarted) {
+      Serial.println("Setup OTA now");
+      ArduinoOTA.setHostname(thingName.c_str());
+      Serial.print("IP address: ");
+      Serial.println(WiFi.softAPIP());
+      setupOTA();
 
-  if (iot.isWifiConnected()) {
-    Serial.println("before AduinoOTA.handle()");
-    ArduinoOTA.handle();
+      wifiStarted = true;
+      httpLastRequest = -httpRequestDelayMs - 100; // ensure fetching data asap
+    } else {
+      ArduinoOTA.handle();
+    }
   }
-  
+  iotWebConf.doLoop();
 
-  // start configuration portal:
-  if (digitalRead(TRIGGER_PIN) == LOW ) {
-      Serial.println("Triggered pin low!");
-      iot.restartWithConfigurationPortal();
-  }
-
-
-  if (!mqttClient.connected()) {
-    Serial.println("Try to connect to mqtt broker");
-    mqttConnect();
+  if (needReset)
+  {
+    Serial.println("Rebooting after 1 second.");
+    iotWebConf.delay(1000);
+    ESP.restart();
   }
 
   //Serial.println("MQTT loop");
   mqttClient.loop();
-  
+
+  // fetch json value ever 2min:
   if (millis() - httpLastRequest > httpRequestDelayMs) {
     httpLastRequest = millis();
-    fetchJsonValue();
+    float value = fetchJsonValue(); 
+    jsonValueReceived = value != NO_NUMBER_F;
+    if (jsonValueReceived) {
+      jsonValue = value;
+    }
   }
 
-  //Serial.println("display start");
-  display.clear();
+  if (wifiStarted && !mqttClient.connected()) {
+    Serial.println("Try to connect to mqtt broker");
+    mqttConnect();
+  }
 
-  displayTime();
+  if (millis() - lastAction > lastActionDelayMs) {
+    recordWifiQuality();
 
-  displayTemperature();
-  displayMqttValue();
-  displayJsonValue();
-  displayWifiRSSI();
+    //Serial.println("display start");
+    display.clear();
 
-  // display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  // display.setFont(ArialMT_Plain_10);
-  // display.drawString(display.width(), 4, "12345678890");
+    displayTime();
 
-  autoBrightnessFromLightSensor();
+    displayTemperature();
+    displayMqttValue();
+    displayJsonValue();
+    displayWifiRSSI();
 
-  display.display();
+    // display.setTextAlignment(TEXT_ALIGN_RIGHT);
+    // display.setFont(ArialMT_Plain_10);
+    // display.drawString(display.width(), 4, "12345678890");
 
-  delay(300);
+    autoBrightnessFromLightSensor();
+
+    display.display();
+  }
+}
+
+void wifiConnected() {
+  Serial.println("WifiConnected Callback");
+  setupMqttServer();
+  needMqttConnect = true;
+
+  // Init and get the time
+  configTime(TIME_GMT_OFFSET_SECS, TIME_DAYLIGHT_OFFSET_SEC, "pool.ntp.org");
+
+}
+
+void configSaved()
+{
+  Serial.println("Configuration was updated.");
+  Serial.print("Json Url: ");
+  Serial.println(jsonUrlParamValue);
+  Serial.print("Json Path: ");
+  Serial.println(jsonPathParamValue);
+  Serial.print("MQTT Server: ");
+  Serial.println(mqttServerParamValue);
+  Serial.print("MQTT Port: ");
+  Serial.println(mqttPortParamValue);
+  Serial.print("MQTT Topic: ");
+  Serial.println(mqttSubscribeTopicParamValue);
+  Serial.print("MQTT Topic Unit: ");
+  Serial.println(mqttSubscribeTopicUnitParamValue);
+
+  // changing the mode needs reset in some cases (fire2012)
+  //needReset = true;  
+}
+
+bool formValidator(iotwebconf::WebRequestWrapper* webRequestWrapper)
+{
+  Serial.println("Validating form.");
+  bool valid = true;
+
+/*
+  int l = webRequestWrapper->arg(stringParam.getId()).length();
+  if (l < 3)
+  {
+    stringParam.errorMessage = "Please provide at least 3 characters for this test!";
+    valid = false;
+  }
+*/
+  return valid;
 }
