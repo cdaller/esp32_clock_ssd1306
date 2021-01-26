@@ -715,6 +715,7 @@ void loop() {
   }
 
   if (millis() - lastAction > lastActionDelayMs) {
+
     recordWifiQuality();
 
     //Serial.println("display start");
@@ -732,6 +733,10 @@ void loop() {
     // display.drawString(display.width(), 4, "12345678890");
 
     autoBrightnessFromLightSensor();
+
+    if (iotWebConf.getState() == IOTWEBCONF_STATE_AP_MODE) {
+      displayText("AP");
+    }
 
     display.display();
   }
