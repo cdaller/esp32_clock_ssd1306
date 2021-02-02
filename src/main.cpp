@@ -4,8 +4,7 @@
 #define TIME_GMT_OFFSET_SECS 3600
 #define TIME_DAYLIGHT_OFFSET_SEC 3600
 
-#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
-
+#include "JsonFetchData.hpp"
 
 // application specific libraries
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
@@ -47,11 +46,6 @@ SSD1306Wire  display(DISPLAY_I2C, DISPLAY_SDA, DISPLAY_SCL);
 
 // light sensor
 #define LIGHT_SENSOR_PIN A0
-
-#define NO_NUMBER_F -99999
-
-boolean jsonValueReceived = false;
-float jsonValue = NO_NUMBER_F;
 
 bool wifiStarted = false;
 
@@ -133,10 +127,9 @@ iotwebconf::TextParameter mqttSubscribeTopicUnitParam = iotwebconf::TextParamete
 boolean needMqttConnect = false; 
 bool needReset = false;
 
+#define JSON_FETCH_DATA_INTERVAL_MS 120000
+JsonFetchData jsonFetchData = JsonFetchData(jsonUrlParamValue, jsonPathParamValue, JSON_FETCH_DATA_INTERVAL_MS);
 
-HTTPClient http;
-long httpRequestDelayMs = 120000;
-long httpLastRequest = -httpRequestDelayMs - 100; // ensure that request is done at start of device
 long lastActionDelayMs = 300;
 long lastAction = 0;
 
@@ -160,10 +153,10 @@ void handleRoot()
   s += "<h2>Current Values</h2>";
   s += "<ul>";
   s += "<li>Last value: ";
-  s += jsonValue;
+  s += jsonFetchData.getValue();
   s += "</il>";
   s += "<li>Value received: ";
-  s += jsonValueReceived ? "yes" : "no";
+  s += jsonFetchData.getStatusAsText();
   s += "</il>";
   s += "<li>Uptime: ";
   s += days;
@@ -245,112 +238,6 @@ void setupOTA() {
   ArduinoOTA.begin();
 
   ESP_LOGI(TAG, "OTA Initialized, IP address:  %s", WiFi.localIP());
-}
-
-// parse jsonPaths like $.foo[1].bar.baz[2][3].value equals to foo[1].bar.baz[2][3].value
-float parseJson(char* jsonString, char *jsonPath) {
-    float value;
-    DynamicJsonBuffer jsonBuffer;
-    
-    JsonVariant root = jsonBuffer.parse(jsonString);
-    JsonVariant element = root;
-
-    if (root.success()) {
-        // parse jsonPath and navigate through json object:
-        char pathElement[40];
-        int pathIndex = 0;
-
-        ESP_LOGD(TAG, "parsing '%s'", jsonPath);
-        for (int i = 0; jsonPath[i] != '\0'; i++){
-            if (jsonPath[i] == '$') {
-                element = root;
-            } else if (jsonPath[i] == '.') {
-                if (pathIndex > 0) {
-                    pathElement[pathIndex++] = '\0';
-                    // printf("pathElement '%s'\n", pathElement);
-                    pathIndex = 0;
-                    element = element[pathElement];
-                    if (!element.success()) {
-                        ESP_LOGW(TAG, "failed to parse key %s", pathElement);
-                    }
-                }
-            } else if ((jsonPath[i] >= 'a' && jsonPath[i] <= 'z') 
-                    || (jsonPath[i] >= 'A' && jsonPath[i] <= 'Z') 
-                    || (jsonPath[i] >= '0' && jsonPath[i] <= '9')
-                    || jsonPath[i] == '-' || jsonPath[i] == '_'
-                    ) {
-                pathElement[pathIndex++] = jsonPath[i];
-            } else if (jsonPath[i] == '[') {
-                if (pathIndex > 0) {
-                    pathElement[pathIndex++] = '\0';
-                    // printf("pathElement '%s'\n", pathElement);
-                    pathIndex = 0;
-                    element = element[pathElement];
-                    if (!element.success()) {
-                        ESP_LOGW(TAG, "failed in parsing key %s", pathElement);
-                    }
-                }
-            } else if (jsonPath[i] == ']') {
-                pathElement[pathIndex++] = '\0';
-                int arrayIndex = strtod(pathElement, NULL);
-                // printf("index '%s' = %d\n", pathElement, arrayIndex);
-                pathIndex = 0;
-                element = element[arrayIndex];
-                if (!element.success()) {
-                    ESP_LOGW(TAG, "failed in parsing index %d", arrayIndex);
-                }
-            }
-        }  
-        // final token if any:
-        if (pathIndex > 0) {
-            pathElement[pathIndex++] = '\0';
-            // printf("pathElement '%s'\n", pathElement);
-            pathIndex = 0;
-            element = element[pathElement];
-            if (!element.success()) {
-                ESP_LOGW(TAG, "failed in parsing key %s", pathElement);
-            }
-        }
-
-        value = element.as<float>();
-
-        //jsonValue = measurements[1]["sensordatavalues"][0]["value"];
-        ESP_LOGI(TAG, "success reading value: %f", value);
-    } else {
-        value = NO_NUMBER_F;
-        ESP_LOGI("could not parse json for value");
-    }
-    return value;
-}
-
-
-float fetchJsonValue() {
-  float value = NO_NUMBER_F;
-  if (WiFi.status() == WL_CONNECTED) {
-    ESP_LOGD(TAG, "requesting data via http");
-    // from: https://github.com/espressif/arduino-esp32/blob/master/libraries/HTTPClient/examples/ReuseConnection/ReuseConnection.ino
-    // use WiFiClient / WiFiSecureClient https://github.com/espressif/arduino-esp32/issues/3347
-    WiFiClient client;
-    HTTPClient http;
-    http.begin(client, jsonUrlParamValue);
-
-    int httpCode = http.GET();
-    if(httpCode > 0) {
-      ESP_LOGD(TAG, "[HTTP] GET... code: %d", httpCode);
-
-      // file found at server
-      if(httpCode == HTTP_CODE_OK) {
-        String payload = http.getString();
-        ESP_LOGD(TAG, payload);    
-
-        value = parseJson(&payload[0], jsonPathParamValue);
-      }
-    } else {
-      ESP_LOGW(TAG, "[HTTP] GET... failed, error: %s", http.errorToString(httpCode).c_str());
-    }
-    http.end();    
-  }
-  return value;
 }
 
 
@@ -517,7 +404,8 @@ void displayJsonValue() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_10);
   char tempString[10];
-  if (jsonValue != NO_NUMBER_F) {
+  float jsonValue = jsonFetchData.getValue();
+  if (jsonFetchData.getStatus() == JsonFetchData::STATUS_DATA_OK) {
     sprintf(tempString, "%.1f%s", jsonValue, "ug");
   } else {
     sprintf(tempString, "%s%s", "??", "ug");
@@ -589,7 +477,6 @@ void setup() {
   server.onNotFound([]() {
     iotWebConf.handleNotFound();
   });
-
 
   display.init();
   //display.flipScreenVertically();
@@ -678,7 +565,7 @@ void loop() {
       setupOTA();
 
       wifiStarted = true;
-      httpLastRequest = -httpRequestDelayMs - 100; // ensure fetching data asap
+      jsonFetchData.resetFetchInterval();
     } else {
       ArduinoOTA.handle();
     }
@@ -693,16 +580,6 @@ void loop() {
   }
 
   mqttClient.loop();
-
-  // fetch json value ever 2min:
-  if (millis() - httpLastRequest > httpRequestDelayMs) {
-    httpLastRequest = millis();
-    float value = fetchJsonValue(); 
-    jsonValueReceived = value != NO_NUMBER_F;
-    if (jsonValueReceived) {
-      jsonValue = value;
-    }
-  }
 
   if (wifiStarted && !mqttClient.connected()) {
     ESP_LOGD(TAG, "Try to connect to mqtt broker");
@@ -762,6 +639,8 @@ void configSaved()
   ESP_LOGI(TAG, "MQTT Topic Unit: %s", mqttSubscribeTopicUnitParamValue);
 
   mqttConnect(); // to subscribe to new topic
+  jsonFetchData = JsonFetchData(jsonUrlParamValue, jsonPathParamValue, JSON_FETCH_DATA_INTERVAL_MS);
+
   //needReset = true;  
 }
 
