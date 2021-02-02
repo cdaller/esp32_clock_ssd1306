@@ -761,7 +761,7 @@ void configSaved()
   ESP_LOGI(TAG, "MQTT Topic: %s", mqttSubscribeTopicParamValue);
   ESP_LOGI(TAG, "MQTT Topic Unit: %s", mqttSubscribeTopicUnitParamValue);
 
-  // changing the mode needs reset in some cases (fire2012)
+  mqttConnect(); // to subscribe to new topic
   //needReset = true;  
 }
 
