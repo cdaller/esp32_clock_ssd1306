@@ -59,7 +59,7 @@ PubSubClient mqttClient(espClient);
 // IotWebConf configuration:
 // -------------------------
 // -- Configuration specific key. The value should be modified if config structure was changed.
-#define CONFIG_VERSION "clk1"
+#define CONFIG_VERSION "clk2"
 // -- Status indicator pin.
 //      First it will light up (kept LOW), on Wifi connection it will blink,
 //      when connected to the Wifi it will turn off (kept HIGH).
@@ -98,7 +98,12 @@ IotWebConf iotWebConf(thingName.c_str(), &dnsServer, &server, wifiInitialApPassw
 #define DEFAULT_MQTT_SUBSCRIBE_TOPIC "/home/ESP_Easy_Mobile/Temperature"
 #define DEFAULT_MQTT_SUBSCRIBE_TOPIC_UNIT "°C"
 #define DEFAULT_JSON_URL "http://data.sensor.community/airrohr/v1/sensor/12758/"
-#define DEFAULT_JSON_PATH "$[1].sensordatavalues[0].value"
+#define DEFAULT_JSON_PATH "$[0].sensordatavalues[0].value"
+#define DEFAULT_JSON_FORMATTER "%.0fug"
+#define DEFAULT_JSON2_URL "http://data.sensor.community/airrohr/v1/sensor/12759/"
+#define DEFAULT_JSON2_PATH "$[0].sensordatavalues[0].value"
+#define DEFAULT_JSON2_FORMATTER "%.1f°C"
+
 // directly load values from local sensor luftdaten.info:
 // "http://192.168.8.100/data.json" / "$.sensordatavalues[0].value";
 
@@ -113,10 +118,18 @@ char mqttSubscribeTopicUnitParamValue[STRING_LEN];
 // my sensor at luftdaten.info
 char jsonUrlParamValue[STRING_LEN];
 char jsonPathParamValue[STRING_LEN];
+char jsonFormatterParamValue[STRING_LEN];
+char json2UrlParamValue[STRING_LEN];
+char json2PathParamValue[STRING_LEN];
+char json2FormatterParamValue[STRING_LEN];
 
 iotwebconf::ParameterGroup paramGroup = iotwebconf::ParameterGroup("group1", "Configuration");
 iotwebconf::TextParameter jsonUrlParam = iotwebconf::TextParameter("Json Url", "jsonUrlParam", jsonUrlParamValue, STRING_LEN, DEFAULT_JSON_URL);
 iotwebconf::TextParameter jsonPathParam = iotwebconf::TextParameter("Json Path", "jsonPathParam", jsonPathParamValue, STRING_LEN, DEFAULT_JSON_PATH);
+iotwebconf::TextParameter jsonFormatterParam = iotwebconf::TextParameter("Json Formatter", "jsonFormatterParam", jsonFormatterParamValue, STRING_LEN, DEFAULT_JSON_FORMATTER);
+iotwebconf::TextParameter json2UrlParam = iotwebconf::TextParameter("Json2 Url", "json2UrlParam", json2UrlParamValue, STRING_LEN, DEFAULT_JSON2_URL);
+iotwebconf::TextParameter json2PathParam = iotwebconf::TextParameter("Json2 Path", "json2PathParam", json2PathParamValue, STRING_LEN, DEFAULT_JSON2_PATH);
+iotwebconf::TextParameter json2FormatterParam = iotwebconf::TextParameter("Json2 Formatter", "json2FormatterParam", json2FormatterParamValue, STRING_LEN, DEFAULT_JSON2_FORMATTER);
 iotwebconf::TextParameter mqttServerParam = iotwebconf::TextParameter("MQTT Server", "mqttServerParam", mqttServerParamValue, STRING_LEN, DEFAULT_MQTT_SERVER);
 iotwebconf::NumberParameter mqttPortParam = iotwebconf::NumberParameter("MQTT Port", "mqttPortParam", mqttPortParamValue, NUMBER_LEN, DEFAULT_MQTT_PORT, "e.g. 1883", "step='1'");
 iotwebconf::TextParameter mqttUserParam = iotwebconf::TextParameter("MQTT User", "mqttServerParam", mqttUserParamValue, STRING_LEN, DEFAULT_MQTT_USER);
@@ -129,6 +142,7 @@ bool needReset = false;
 
 #define JSON_FETCH_DATA_INTERVAL_MS 120000
 JsonFetchData jsonFetchData = JsonFetchData(jsonUrlParamValue, jsonPathParamValue, JSON_FETCH_DATA_INTERVAL_MS);
+JsonFetchData jsonFetchData2 = JsonFetchData(json2UrlParamValue, json2PathParamValue, JSON_FETCH_DATA_INTERVAL_MS);
 
 long lastActionDelayMs = 300;
 long lastAction = 0;
@@ -153,10 +167,16 @@ void handleRoot()
   s += "<h2>Current Values</h2>";
   s += "<ul>";
   s += "<li>Last value: ";
-  s += jsonFetchData.getValue();
+  s += jsonFetchData.getValueFormatted();
   s += "</il>";
   s += "<li>Value received: ";
   s += jsonFetchData.getStatusAsText();
+  s += "</il>";
+  s += "<li>Last value2: ";
+  s += jsonFetchData2.getValueFormatted();
+  s += "</il>";
+  s += "<li>Value received2: ";
+  s += jsonFetchData2.getStatusAsText();
   s += "</il>";
   s += "<li>Uptime: ";
   s += days;
@@ -176,6 +196,18 @@ void handleRoot()
   s += "</il>";
   s += "<li>Json Path: ";
   s +=jsonPathParamValue;
+  s += "</il>";
+  s += "<li>Json Formatter: ";
+  s +=jsonFormatterParamValue;
+  s += "</il>";
+  s += "<li>Json2 Url: ";
+  s += json2UrlParamValue;
+  s += "</il>";
+  s += "<li>Json2 Path: ";
+  s +=json2PathParamValue;
+  s += "</il>";
+  s += "<li>Json2 Formatter: ";
+  s +=json2FormatterParamValue;
   s += "</il>";
   s += "<li>MQTT Server: ";
   s += mqttServerParamValue;
@@ -403,14 +435,29 @@ void displayMqttValue() {
 void displayJsonValue() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_10);
-  char tempString[10];
-  float jsonValue = jsonFetchData.getValue();
+  jsonFetchData.getValue();
   if (jsonFetchData.getStatus() == JsonFetchData::STATUS_DATA_OK) {
-    sprintf(tempString, "%.1f%s", jsonValue, "ug");
+    char* tempString = jsonFetchData.getValueFormatted();
+    display.drawString(display.width() / 2, 4, tempString);
   } else {
+    char tempString[10];
     sprintf(tempString, "%s%s", "??", "ug");
+    display.drawString(display.width() / 2, 4, tempString);
   }
-  display.drawString(display.width() / 2, 4, tempString);
+}
+
+void displayJson2Value() {
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_10);
+  jsonFetchData2.getValue();
+  if (jsonFetchData2.getStatus() == JsonFetchData::STATUS_DATA_OK) {
+    char* tempString = jsonFetchData2.getValueFormatted();
+    display.drawString(0, 4, tempString);
+  } else {
+    char tempString[10];
+    sprintf(tempString, "%s%s", "??", "°C");
+    display.drawString(0, 4, tempString);
+  }
 }
 
 void setBrightness(uint8_t brightness) {
@@ -455,6 +502,10 @@ void setup() {
   // configuration param setup:
   paramGroup.addItem(&jsonUrlParam);
   paramGroup.addItem(&jsonPathParam);
+  paramGroup.addItem(&jsonFormatterParam);
+  paramGroup.addItem(&json2UrlParam);
+  paramGroup.addItem(&json2PathParam);
+  paramGroup.addItem(&json2FormatterParam);
   paramGroup.addItem(&mqttServerParam);
   paramGroup.addItem(&mqttPortParam);
   paramGroup.addItem(&mqttUserParam);
@@ -477,6 +528,10 @@ void setup() {
   server.onNotFound([]() {
     iotWebConf.handleNotFound();
   });
+
+  // FIXME: move to constructor
+  jsonFetchData.setFormatter(jsonFormatterParamValue);
+  jsonFetchData2.setFormatter(json2FormatterParamValue);
 
   display.init();
   //display.flipScreenVertically();
@@ -566,6 +621,7 @@ void loop() {
 
       wifiStarted = true;
       jsonFetchData.resetFetchInterval();
+      jsonFetchData2.resetFetchInterval();
     } else {
       ArduinoOTA.handle();
     }
@@ -595,9 +651,10 @@ void loop() {
 
     displayTime();
 
-    displayTemperature();
+    //displayTemperature();
     displayMqttValue();
     displayJsonValue();
+    displayJson2Value();
     displayWifiRSSI();
 
     // display.setTextAlignment(TEXT_ALIGN_RIGHT);
@@ -633,6 +690,10 @@ void configSaved()
   ESP_LOGI(TAG, "Configuration was updated.");
   ESP_LOGI(TAG, "Json Url: %s", jsonUrlParamValue);
   ESP_LOGI(TAG, "Json Path: %s", jsonPathParamValue);
+  ESP_LOGI(TAG, "Json Formatter: %s", jsonFormatterParamValue);
+  ESP_LOGI(TAG, "Json2 Url: %s", json2UrlParamValue);
+  ESP_LOGI(TAG, "Json2 Path: %s", json2PathParamValue);
+  ESP_LOGI(TAG, "Json2 Formatter: %s", json2FormatterParamValue);
   ESP_LOGI(TAG, "MQTT Server: %s", mqttServerParamValue);
   ESP_LOGI(TAG, "MQTT Port: %s", mqttPortParamValue);
   ESP_LOGI(TAG, "MQTT Topic: %s", mqttSubscribeTopicParamValue);
@@ -640,6 +701,9 @@ void configSaved()
 
   mqttConnect(); // to subscribe to new topic
   jsonFetchData = JsonFetchData(jsonUrlParamValue, jsonPathParamValue, JSON_FETCH_DATA_INTERVAL_MS);
+  jsonFetchData.setFormatter(jsonFormatterParamValue);
+  jsonFetchData2 = JsonFetchData(json2UrlParamValue, json2PathParamValue, JSON_FETCH_DATA_INTERVAL_MS);
+  jsonFetchData2.setFormatter(json2FormatterParamValue);
 
   //needReset = true;  
 }

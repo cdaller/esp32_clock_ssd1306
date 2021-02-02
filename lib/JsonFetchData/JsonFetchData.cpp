@@ -9,6 +9,8 @@ JsonFetchData::JsonFetchData(char* jsonUrl, char* jsonPath, long fetchInvervalMs
     this->jsonUrl = jsonUrl;
     this->jsonPath = jsonPath;
     this->fetchIntervalMs = fetchInvervalMs;
+    lastFetchValueMillis = -fetchIntervalMs - 100;
+    setFormatter(DEFAULT_FORMATTER);
     ESP_LOGI(TAG, "json fetch data from %s using path %s", jsonUrl, jsonPath);
 }
 
@@ -141,6 +143,7 @@ void JsonFetchData::parseJson(char* jsonString, char *jsonPath) {
 
     if (status == STATUS_DATA_OK) {
         lastValue = value;
+        sprintf(lastValueFormatted, formatter, lastValue);
     }
     lastStatus = status;
 }
