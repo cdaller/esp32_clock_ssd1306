@@ -1,5 +1,6 @@
 #define LOG_LOCAL_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
+const char* TAG = "ESP32_CLOCK"; // debug tag
 
 #define TIME_GMT_OFFSET_SECS 3600
 #define TIME_DAYLIGHT_OFFSET_SEC 3600
@@ -95,7 +96,7 @@ IotWebConf iotWebConf(thingName.c_str(), &dnsServer, &server, wifiInitialApPassw
 #define DEFAULT_MQTT_PORT "1883"
 #define DEFAULT_MQTT_USER ""
 #define DEFAULT_MQTT_PASSWORD ""
-#define DEFAULT_MQTT_SUBSCRIBE_TOPIC "/home/ESP_Easy_Mobile/Temperature"
+#define DEFAULT_MQTT_SUBSCRIBE_TOPIC "/home/ESP_Easy_1/Temperature"
 #define DEFAULT_MQTT_SUBSCRIBE_TOPIC_UNIT "°C"
 #define DEFAULT_JSON_URL "http://data.sensor.community/airrohr/v1/sensor/12758/"
 #define DEFAULT_JSON_PATH "$[0].sensordatavalues[0].value"
@@ -177,6 +178,9 @@ void handleRoot()
   s += "</il>";
   s += "<li>Value received2: ";
   s += jsonFetchData2.getStatusAsText();
+  s += "</il>";
+  s += "<li>MQTT Subscribe value: ";
+  s += mqttSubscribeValue;
   s += "</il>";
   s += "<li>Uptime: ";
   s += days;
@@ -435,29 +439,15 @@ void displayMqttValue() {
 void displayJsonValue() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setFont(ArialMT_Plain_10);
-  jsonFetchData.getValue();
-  if (jsonFetchData.getStatus() == JsonFetchData::STATUS_DATA_OK) {
-    char* tempString = jsonFetchData.getValueFormatted();
-    display.drawString(display.width() / 2, 4, tempString);
-  } else {
-    char tempString[10];
-    sprintf(tempString, "%s%s", "??", "ug");
-    display.drawString(display.width() / 2, 4, tempString);
-  }
+  char* tempString = jsonFetchData.getValueFormatted();
+  display.drawString(display.width() / 2, 4, tempString);
 }
 
 void displayJson2Value() {
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
-  jsonFetchData2.getValue();
-  if (jsonFetchData2.getStatus() == JsonFetchData::STATUS_DATA_OK) {
-    char* tempString = jsonFetchData2.getValueFormatted();
-    display.drawString(0, 4, tempString);
-  } else {
-    char tempString[10];
-    sprintf(tempString, "%s%s", "??", "°C");
-    display.drawString(0, 4, tempString);
-  }
+  char* tempString = jsonFetchData2.getValueFormatted();
+  display.drawString(0, 4, tempString);
 }
 
 void setBrightness(uint8_t brightness) {
@@ -497,6 +487,7 @@ void autoBrightnessFromLightSensor() {
 void setup() {
   Serial.begin(115200);
   esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("JSON_FETCH_DATA", ESP_LOG_DEBUG);
   esp_log_level_set("wifi", ESP_LOG_WARN); 
 
   // configuration param setup:

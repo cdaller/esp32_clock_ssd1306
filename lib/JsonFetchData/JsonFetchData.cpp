@@ -14,6 +14,11 @@ JsonFetchData::JsonFetchData(char* jsonUrl, char* jsonPath, long fetchInvervalMs
     ESP_LOGI(TAG, "json fetch data from %s using path %s", jsonUrl, jsonPath);
 }
 
+void JsonFetchData::setFormatter(char* formatter) { 
+    this->formatter = String(formatter);
+};
+
+
 const char* JsonFetchData::getStatusAsText() {
     switch (lastStatus) {
     case 0:
@@ -29,13 +34,45 @@ const char* JsonFetchData::getStatusAsText() {
     }
 }
 
-
 float JsonFetchData::getValue() {
+    fetchValueIfNeeded();
+    return lastValue;
+}
+
+char* JsonFetchData::getValueFormatted() { 
+    fetchValueIfNeeded();
+    return lastValueFormatted; 
+}
+
+int JsonFetchData::getStatus() { 
+    fetchValueIfNeeded(); 
+    return lastStatus; 
+}
+
+void JsonFetchData::fetchValueIfNeeded() {
     if (millis() - lastFetchValueMillis > fetchIntervalMs) {
         fetchJsonValue();
+        String addOn;
+        switch (lastStatus)
+        {
+        case STATUS_DATA_OK:
+            addOn = "";
+            break;
+        case STATUS_HTTP_ERROR:
+            addOn = "#";
+            break;
+        case STATUS_JSON_PARSE_ERROR:
+            addOn = "*";
+            break;
+        case STATUS_NO_DATA:
+            addOn = "?";
+            break;
+        default:
+            break;
+        }
+        sprintf(lastValueFormatted, (formatter + addOn).c_str(), lastValue);
         lastFetchValueMillis = millis();
     }
-    return lastValue;
 }
 
 void JsonFetchData::fetchJsonValue() {
@@ -143,7 +180,6 @@ void JsonFetchData::parseJson(char* jsonString, char *jsonPath) {
 
     if (status == STATUS_DATA_OK) {
         lastValue = value;
-        sprintf(lastValueFormatted, formatter, lastValue);
     }
     lastStatus = status;
 }

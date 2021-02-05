@@ -1,18 +1,20 @@
 #ifndef JsonFetchData_hpp
 #define JsonFetchData_hpp
 
+#include <WString.h>
+
 class JsonFetchData {
     public:
         JsonFetchData(char* jsonUrl, char* jsonPath, long fetchInvervalMs);
         ~JsonFetchData() {}
 
         float getValue();
-        char* getValueFormatted() { return lastValueFormatted; }
-        int getStatus() { return lastStatus; }
+        char* getValueFormatted();
+        int getStatus();
         const char* getStatusAsText();
         void resetFetchInterval() { lastFetchValueMillis = 0; };
 
-        void setFormatter(char* formatter) { this-> formatter = formatter; };
+        void setFormatter(char* formatter);
 
         char DEFAULT_FORMATTER[10] = "%.1f";
         static const int STATUS_DATA_OK = 0;
@@ -21,7 +23,8 @@ class JsonFetchData {
         static const int STATUS_NO_DATA = 3;
 
     private:
-        char* formatter;
+        const char* TAG = "JSON_FETCH_DATA"; // debug tag
+        String formatter;
         char* jsonUrl;
         char* jsonPath;
         long fetchIntervalMs;
@@ -30,6 +33,7 @@ class JsonFetchData {
         char lastValueFormatted[100];
         int lastStatus = STATUS_NO_DATA;
 
+        void fetchValueIfNeeded();
         void fetchJsonValue();
         void parseJson(char* jsonString, char *jsonPath);
         
