@@ -11,6 +11,7 @@ class JsonFetchData {
         float getValue();
         char* getValueFormatted();
         int getStatus();
+        bool isStatusOk() { return getStatus() == STATUS_DATA_OK; }
         const char* getStatusAsText();
         void resetFetchInterval() { lastFetchValueMillis = 0; };
 

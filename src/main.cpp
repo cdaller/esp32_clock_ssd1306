@@ -24,8 +24,6 @@ const char* TAG = "ESP32_CLOCK"; // debug tag
 
 #include <PubSubClient.h>
 
-#include <HTTPClient.h>
-
 // #include <Adafruit_Sensor.h>
 // #include <DHT.h>
 // #include <DHT_U.h>
@@ -151,8 +149,7 @@ long lastAction = 0;
 void handleRoot()
 {
   // Let IotWebConf test and handle captive portal requests.
-  if (iotWebConf.handleCaptivePortal())
-  {
+  if (iotWebConf.handleCaptivePortal()) {
     // Captive portal request were already served.
     return;
   }
