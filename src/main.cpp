@@ -2,9 +2,6 @@
 #include "esp_log.h"
 const char* TAG = "ESP32_CLOCK"; // debug tag
 
-#define TIME_GMT_OFFSET_SECS 3600
-#define TIME_DAYLIGHT_OFFSET_SEC 3600
-
 #include "JsonFetchData.hpp"
 
 // application specific libraries
@@ -30,6 +27,10 @@ const char* TAG = "ESP32_CLOCK"; // debug tag
 
 // display
 #include "font.h"
+
+/* Configuration of NTP */
+#define NTP_SERVER "at.pool.ntp.org"           
+#define DEFAULT_TIMEZONE "CET-1CEST,M3.5.0/02,M10.5.0/03"  
 
 #define DISPLAY_I2C 0x3c
 #define DISPLAY_SDA 5
@@ -468,7 +469,7 @@ void setBrightness(uint8_t brightness) {
 // read value from analog light sensor and set as brightness:
 void autoBrightnessFromLightSensor() {
   int rawValue = analogRead(LIGHT_SENSOR_PIN); 
-  ESP_LOGD("light: %d", rawValue);
+  ESP_LOGD(TAG, "light: %d", rawValue);
   // FIXME: see https://learn.sparkfun.com/tutorials/tsl2561-luminosity-sensor-hookup-guide/all
   int displayBrightness = rawValue / 16;
 
@@ -669,8 +670,7 @@ void wifiConnected() {
   needMqttConnect = true;
 
   // Init and get the time
-  configTime(TIME_GMT_OFFSET_SECS, TIME_DAYLIGHT_OFFSET_SEC, "pool.ntp.org");
-
+  configTzTime(DEFAULT_TIMEZONE, NTP_SERVER); //sets TZ and starts NTP sync
 }
 
 void configSaved()

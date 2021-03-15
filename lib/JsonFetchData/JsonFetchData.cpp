@@ -91,7 +91,7 @@ void JsonFetchData::fetchJsonValue() {
       // file found at server
       if(httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
-        ESP_LOGD(TAG, payload);    
+        ESP_LOGD(TAG, "payload %s", payload);    
 
         parseJson(&payload[0], this->jsonPath);
       }
